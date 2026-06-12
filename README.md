@@ -9,21 +9,18 @@ Terminal-based AI assistant powered by NVIDIA NIM. Executes shell commands, mana
 
 ## Installation
 
-### Ubuntu / Debian
+One command for both Ubuntu and RHEL:
 
 ```bash
-sudo apt update && sudo apt install python3 python3-pip python3-venv -y
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+bash install.sh
 ```
 
-### RHEL / Fedora / CentOS
+This will:
+1. Detect your OS and install `python3`, `pip`, and `venv` via `apt`, `dnf`, or `yum`
+2. Create a virtual environment (`.venv`) in the project directory
+3. Install all Python dependencies
 
-```bash
-sudo dnf install python3 python3-pip -y    # or: yum install python3 python3-pip
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-```
+No need to activate a venv manually — `tell` and `run.sh` auto-detect it.
 
 ## Quick Start
 
