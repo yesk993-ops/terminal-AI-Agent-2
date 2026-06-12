@@ -1,5 +1,5 @@
 #!/bin/bash
-AGENT_DIR="/home/test/nvidia-agent"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ $# -eq 0 ]; then
     echo "Usage: tell <your request>"
@@ -11,5 +11,23 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-export NVIDIA_API_KEY="${NVIDIA_API_KEY:-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}"
-exec python3 "$AGENT_DIR/agent.py" --inline "$@"
+if [ -z "$NVIDIA_API_KEY" ]; then
+    echo "Error: NVIDIA_API_KEY is not set."
+    echo "Get a key: https://build.nvidia.com/explore"
+    echo "Then: export NVIDIA_API_KEY=\"nvapi-...\""
+    exit 1
+fi
+
+PYTHON=""
+for cmd in python3 python; do
+    if command -v "$cmd" &>/dev/null; then
+        PYTHON="$cmd"
+        break
+    fi
+done
+if [ -z "$PYTHON" ]; then
+    echo "Error: Python not found. Install python3."
+    exit 1
+fi
+
+exec "$PYTHON" "$SCRIPT_DIR/agent.py" --inline "$@"

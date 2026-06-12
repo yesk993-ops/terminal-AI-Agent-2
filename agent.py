@@ -6,7 +6,11 @@ Security: API key via env var, path validation, dangerous command blocking
 import requests, json, os, sys, subprocess, shutil, time, threading, itertools, textwrap, re, random
 
 INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-API_KEY = os.environ.get("NVIDIA_API_KEY") or "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"
+API_KEY = os.environ.get("NVIDIA_API_KEY")
+if not API_KEY:
+    print("Error: NVIDIA_API_KEY environment variable not set.")
+    print("Get a key at: https://build.nvidia.com/explore")
+    sys.exit(1)
 _env_models = os.environ.get("NVIDIA_MODEL", "").strip()
 MODELS = (
     [m.strip() for m in _env_models.split(",") if m.strip()]
@@ -460,7 +464,7 @@ def _security_scan():
     r.append("=== SUID Files ===")
     r.append(execute("find /usr/bin /usr/sbin -perm -4000 -type f 2>/dev/null"))
     r.append("=== Firewall ===")
-    r.append(execute("ufw status 2>/dev/null; iptables -L -n 2>/dev/null | head -10; echo '--- done ---'"))
+    r.append(execute("ufw status 2>/dev/null || firewall-cmd --list-all 2>/dev/null || echo 'no firewall frontend'; iptables -L -n 2>/dev/null | head -10; echo '--- done ---'"))
     r.append("=== Failed Logins ===")
     r.append(execute("lastb 2>/dev/null | head -5 || echo 'none'"))
     r.append("=== Disk ===")
@@ -484,10 +488,10 @@ LOCAL = {
     "ports": lambda: execute("ss -tlnp"),
     "sysinfo": lambda: execute("uname -a"),
     "services": lambda: execute("systemctl list-units --type=service --state=running 2>/dev/null | head -20"),
-    "fw": lambda: execute("ufw status verbose 2>/dev/null; iptables -L -n 2>/dev/null | head -20; echo '---'"),
-    "firewall": lambda: execute("ufw status verbose 2>/dev/null; iptables -L -n 2>/dev/null | head -20; echo '---'"),
-    "updates": lambda: execute("apt list --upgradable 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'"),
-    "upgradable": lambda: execute("apt list --upgradable 2>/dev/null | head -20"),
+    "fw": lambda: execute("(ufw status verbose 2>/dev/null || firewall-cmd --list-all 2>/dev/null); iptables -L -n 2>/dev/null | head -20; echo '---'"),
+    "firewall": lambda: execute("(ufw status verbose 2>/dev/null || firewall-cmd --list-all 2>/dev/null); iptables -L -n 2>/dev/null | head -20; echo '---'"),
+    "updates": lambda: execute("apt list --upgradable 2>/dev/null | head -20 || dnf check-update 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'"),
+    "upgradable": lambda: execute("apt list --upgradable 2>/dev/null | head -20 || dnf check-update 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'"),
     "users": lambda: execute("who -u"),
     "logins": lambda: execute("last -10 2>/dev/null"),
     "scan": lambda: execute("echo '--- PORTS ---' && ss -tlnp 2>/dev/null && echo '--- TOP PROCS ---' && ps aux --sort=-%cpu | head -10 && echo '--- DISK ---' && df -h && echo '--- MEM ---' && free -h"),

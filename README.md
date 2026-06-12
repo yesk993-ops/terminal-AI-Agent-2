@@ -1,60 +1,121 @@
-# NVIDIA System Agent
+# tell - AI System & Coding Agent
 
-Terminal-based system administrator and coding agent powered by Kimi K2.6.
+Terminal-based AI assistant powered by NVIDIA NIM. Executes shell commands, manages files, monitors systems, and writes code — all from natural language.
 
-## Setup
+## Requirements
+
+- Python 3.8+
+- NVIDIA API key ([get one free](https://build.nvidia.com/explore))
+
+## Installation
+
+### Ubuntu / Debian
 
 ```bash
+sudo apt update && sudo apt install python3 python3-pip python3-venv -y
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+### RHEL / Fedora / CentOS
+
+```bash
+sudo dnf install python3 python3-pip -y    # or: yum install python3 python3-pip
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+Set your API key and run:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+./tell "check disk usage"
+```
+
+Or use interactive mode:
+
+```bash
+./run.sh
 ```
 
 ## Usage
 
+### Command line (one-shot)
+
 ```bash
-python3 agent.py
-# or
+./tell "show me running processes"
+./tell "create a python web server"
+./tell "check disk space"
+./tell "install nginx"
+```
+
+### Interactive mode
+
+```bash
 ./run.sh
 ```
 
-## Commands
+Then type commands naturally:
+- `check disk usage`
+- `what ports are open?`
+- `create a flask todo app`
+- `run ls -la`
+- `read /etc/os-release`
 
-### Quick Commands
+### Built-in quick commands
+
 | Command | Description |
 |---------|-------------|
-| `run <cmd>` | Execute shell command |
-| `read <file>` | Read file contents |
-| `write <file>` | Write to file |
-| `disk` | Disk usage |
-| `mem` | Memory info |
-| `procs` | Top processes |
-| `sysinfo` | System info |
-| `net` | Network info |
-| `install <pkg>` | Install package |
-| `service <act> <name>` | Manage service |
+| `disk` | Disk usage summary |
+| `memory` | RAM usage |
+| `procs` | Top processes by CPU |
+| `sysinfo` | Kernel and OS info |
+| `ports` | Open listening ports |
+| `services` | Running systemd services |
+| `updates` | Available package updates |
+| `fw` / `firewall` | Firewall status |
+| `users` | Logged-in users |
+| `security` | Full security overview |
+| `whoami` | Current user |
+| `uptime` | System uptime |
+| `ip` | IP addresses |
+| `date` | Current date/time |
 
-### Natural Language
-Just ask in plain English:
-- "show me running processes"
-- "create a python web server"
-- "check disk space"
-- "install docker"
-- "restart nginx"
-- "what's using the most memory?"
+### Agent commands
 
-### Agent Commands
-- `quit` / `exit` - Exit
-- `clear` - Clear screen
-- `reset` - Reset conversation
-- `help` - Show help
+- `quit` / `exit` — Exit
+- `clear` — Clear screen
+- `reset` — Reset conversation
+- `help` — Show help
+- `border` — Cycle border styles
 
-## Features
+## Cross-platform Support
 
-- Execute any shell command
-- Read/write/copy/delete files
-- System monitoring (CPU, RAM, disk)
-- Process management
-- Package installation
-- Service management (systemd)
-- Network information
-- Dangerous command protection
-- Streaming AI responses
+This agent works on both **Debian/Ubuntu** (apt) and **RHEL/Fedora/CentOS** (dnf/yum) systems. Package manager detection is automatic.
+
+## API Key
+
+Get your free NVIDIA API key at [build.nvidia.com](https://build.nvidia.com/explore).
+
+Set it as an environment variable:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+```
+
+Or add to your `~/.bashrc` / `~/.zshrc` to make it permanent:
+
+```bash
+echo 'export NVIDIA_API_KEY="nvapi-..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NVIDIA_API_KEY` | — | **Required.** Your NVIDIA NIM API key |
+| `NVIDIA_MODEL` | (multi-model) | Comma-separated model list to override defaults |
+| `TELL_BORDER` | `rounded` | Border style: `rounded`, `classic`, `sharp`, `thick` |
