@@ -61,15 +61,35 @@ deactivate
 # --- Make scripts executable ---
 chmod +x tell run.sh
 
+# --- Install tell command globally ---
+LINK_DEST="/usr/local/bin/tell"
+if [ -w /usr/local/bin ] || sudo -n true 2>/dev/null; then
+    if [ -f "$LINK_DEST" ] || [ -L "$LINK_DEST" ]; then
+        echo "Removing previous tell link..."
+        sudo rm -f "$LINK_DEST"
+    fi
+    echo "Creating symlink: $LINK_DEST -> $SCRIPT_DIR/tell"
+    sudo ln -sf "$SCRIPT_DIR/tell" "$LINK_DEST"
+    echo "  You can now run 'tell' from anywhere."
+elif command -v tell &>/dev/null; then
+    echo "  'tell' is already in your PATH."
+else
+    LINE="export PATH=\"\$PATH:$SCRIPT_DIR\""
+    if ! grep -qxF "$LINE" "$HOME/.bashrc" 2>/dev/null; then
+        echo "Adding $SCRIPT_DIR to PATH in ~/.bashrc..."
+        echo "" >> "$HOME/.bashrc"
+        echo "# tell agent" >> "$HOME/.bashrc"
+        echo "$LINE" >> "$HOME/.bashrc"
+        echo "  Run 'source ~/.bashrc' or restart your shell to use 'tell' from anywhere."
+    fi
+fi
+
 echo ""
 echo "=== Installation complete! ==="
 echo ""
-echo "Set your API key:"
+echo "Set your API key (add to ~/.bashrc to persist):"
 echo "  export NVIDIA_API_KEY=\"nvapi-...\""
 echo ""
 echo "Then use:"
-echo "  ./tell \"check disk usage\"          # one-shot mode"
-echo "  ./run.sh                             # interactive mode"
-echo ""
-echo "TIP: Add the export to ~/.bashrc so you don't need to set it every time:"
-echo "  echo 'export NVIDIA_API_KEY=\"nvapi-...\"' >> ~/.bashrc"
+echo "  tell \"check disk usage\"          # one-shot mode"
+echo "  run.sh                             # interactive mode"

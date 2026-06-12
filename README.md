@@ -28,13 +28,13 @@ Set your API key and run:
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."
-./tell "check disk usage"
+tell "check disk usage"
 ```
 
 Or use interactive mode:
 
 ```bash
-./run.sh
+bash run.sh
 ```
 
 ## Usage
@@ -42,10 +42,10 @@ Or use interactive mode:
 ### Command line (one-shot)
 
 ```bash
-./tell "show me running processes"
-./tell "create a python web server"
-./tell "check disk space"
-./tell "install nginx"
+tell "show me running processes"
+tell "create a python web server"
+tell "check disk space"
+tell "install nginx"
 ```
 
 ### Interactive mode
