@@ -1,0 +1,15 @@
+#!/bin/bash
+AGENT_DIR="/home/test/nvidia-agent"
+
+if [ $# -eq 0 ]; then
+    echo "Usage: tell <your request>"
+    echo ""
+    echo "Examples:"
+    echo "  tell \"create a flask app\""
+    echo "  tell \"check disk usage\""
+    echo "  tell \"update my system\""
+    exit 1
+fi
+
+export NVIDIA_API_KEY="${NVIDIA_API_KEY:-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}"
+exec python3 "$AGENT_DIR/agent.py" --inline "$@"
