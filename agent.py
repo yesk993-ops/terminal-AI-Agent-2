@@ -19,8 +19,8 @@ MODELS = (
     if _env_models
     else [
         "meta/llama-3.1-8b-instruct",
-        "stepfun-ai/step-3.7-flash",
-        "minimaxai/minimax-m2.7",
+        "deepseek-ai/deepseek-v4-pro",
+        "mistralai/mistral-small-4-119b-2603",
     ]
 )
 _last_model = 0
@@ -30,6 +30,8 @@ QUERY_MODELS = (
     if _env_models
     else [
         "meta/llama-3.1-8b-instruct",
+        "deepseek-ai/deepseek-v4-pro",
+        "mistralai/mistral-small-4-119b-2603",
     ]
 )
 
@@ -350,7 +352,7 @@ def _guess_tokens(messages):
     if total < 500: return 1024
     return 2048
 
-def ask(messages, max_tokens=None, max_retries=2, models=None, temperature=0.5):
+def ask(messages, max_tokens=None, max_retries=1, models=None, temperature=0.5):
     """Non-streaming fallback (for conversation history in interactive mode)."""
     global _last_model
     if max_tokens is None:
@@ -371,7 +373,7 @@ def ask(messages, max_tokens=None, max_retries=2, models=None, temperature=0.5):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 120))
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 45))
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
@@ -408,7 +410,7 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 120), stream=True)
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 45), stream=True)
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
