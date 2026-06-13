@@ -109,6 +109,21 @@ EXECUTE: pip install -r requirements.txt
 
 To run it: python app.py"""
 
+QUERY_PROMPT = """You are a helpful AI assistant. Answer the user's questions concisely and accurately.
+
+FORMATTING RULES (strict):
+- NEVER use **, *, _, or any markdown formatting
+- Use plain text only: labels, dashes, numbers, newlines for structure
+- Use backticks `like this` for inline code
+- Use ``` for multi-line code blocks
+
+TONE:
+- Friendly and professional
+- Use natural conversational flow
+- End with a relevant follow-up question or suggestion
+
+You only answer questions. You do not execute commands or create files."""
+
 BORDER_STYLES = {
     "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
     "classic": ("╔", "═", "╗", "║", "╚", "╝"),
@@ -177,11 +192,14 @@ def execute(cmd, timeout=120):
         )
         out = r.stdout
         if r.stderr: out += "\n" + r.stderr
-        return out.strip()[:5000] or "OK"
+        result = out.strip()[:20000] or "OK"
+        if r.returncode != 0:
+            result += f"\n[Exit code: {r.returncode}]"
+        return result
     except subprocess.TimeoutExpired:
-        return "Command timed out"
+        return "Command timed out [Exit code: -1]"
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error: {e} [Exit code: -2]"
 
 def write_file(path, content):
     if not is_safe_path(path):
@@ -243,9 +261,17 @@ _session = requests.Session()
 
 def _guess_tokens(messages):
     total = sum(len(m.get("content", "")) for m in messages if m.get("role") == "user")
-    if total < 100: return 256
-    if total < 300: return 1024
-    return 4096
+    combined = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
+    code_kw = ["create", "build", "write", "make", "app", "code", "file",
+               "implement", "generate", "script", "program", "project"]
+    is_code = any(kw in combined.lower() for kw in code_kw)
+    if is_code:
+        if total < 100: return 4096
+        if total < 500: return 8192
+        return 16384
+    if total < 100: return 512
+    if total < 500: return 1024
+    return 2048
 
 def ask(messages, max_tokens=None, max_retries=2):
     """Non-streaming fallback (for conversation history in interactive mode)."""
@@ -268,7 +294,7 @@ def ask(messages, max_tokens=None, max_retries=2):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=15)
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(10, 30))
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
@@ -305,7 +331,7 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=15, stream=True)
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(10, 30), stream=True)
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
@@ -314,6 +340,8 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
                     return
                 _last_model = idx
                 for line in r.iter_lines(decode_unicode=True):
+                    if line is None:
+                        continue
                     if not line:
                         continue
                     if line.startswith('data: '):
@@ -348,8 +376,12 @@ def stream_response(messages, color=93):
     full_text = ""
     current_line = ""
     started = False
+    deadline = time.time() + 120
+    buf = []
 
     for chunk in ask_stream(messages):
+        if time.time() > deadline:
+            break
         if not started:
             print(f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m")
             sys.stdout.write(f"\033[{color}m{v} ")
@@ -358,19 +390,21 @@ def stream_response(messages, color=93):
         full_text += chunk
         for ch in chunk:
             if ch == '\n':
-                sys.stdout.write(' ' * (inner - len(current_line)))
-                sys.stdout.write(f"{v}\033[0m\n")
-                sys.stdout.write(f"\033[{color}m{v} ")
+                buf.append(' ' * (inner - len(current_line)))
+                buf.append(f"{v}\033[0m\n")
+                buf.append(f"\033[{color}m{v} ")
                 current_line = ""
             elif len(current_line) >= inner:
-                sys.stdout.write(f"{v}\033[0m\n")
-                sys.stdout.write(f"\033[{color}m{v} ")
-                sys.stdout.write(ch)
+                buf.append(f"{v}\033[0m\n")
+                buf.append(f"\033[{color}m{v} ")
+                buf.append(ch)
                 current_line = ch
             else:
-                sys.stdout.write(ch)
+                buf.append(ch)
                 current_line += ch
-            sys.stdout.flush()
+        sys.stdout.write(''.join(buf))
+        sys.stdout.flush()
+        buf.clear()
 
     if started:
         sys.stdout.write(' ' * (inner - len(current_line)))
@@ -392,6 +426,7 @@ def _strip_fences(l):
 
 def run_commands(text):
     results = []
+    created_files = []
     lines = text.split('\n')
     i = 0
     while i < len(lines):
@@ -444,16 +479,77 @@ def run_commands(text):
             if content_lines:
                 content = '\n'.join(content_lines)
                 content = _strip_code_fences(content)
+                abs_path = os.path.abspath(os.path.expanduser(path))
                 result = write_file(path, content)
                 results.append(f"  {result}")
+                if os.path.exists(abs_path):
+                    created_files.append(abs_path)
             i -= 1
         i += 1
-    return '\n'.join(results)
+    deps_result = _auto_install_deps(created_files)
+    if deps_result:
+        results.append(deps_result)
+    for f in created_files:
+        v = _validate_syntax(f)
+        if v:
+            results.append(v)
+    return '\n'.join(results), created_files
 
 
 def _strip_code_fences(text):
     lines = text.split('\n')
     return '\n'.join(l for l in lines if not l.strip().startswith('```'))
+
+_DEPENDENCY_FILES = {
+    "requirements.txt": "pip install -r requirements.txt",
+    "package.json": "npm install",
+    "Cargo.toml": "cargo build",
+    "go.mod": "go mod download",
+    "Gemfile": "bundle install",
+    "composer.json": "composer install",
+    "setup.py": "pip install -e .",
+    "Pipfile": "pipenv install",
+    "yarn.lock": "yarn install",
+    "pnpm-lock.yaml": "pnpm install",
+    "Cargo.lock": "cargo build",
+}
+
+def _auto_install_deps(created_files):
+    detected = set()
+    for f in created_files:
+        basename = os.path.basename(f)
+        if basename in _DEPENDENCY_FILES and basename not in detected:
+            detected.add(basename)
+    if not detected:
+        return ""
+    cmds = [_DEPENDENCY_FILES[d] for d in detected]
+    parts = []
+    for cmd in cmds:
+        out = execute(cmd, timeout=120)
+        parts.append(f"  $ {cmd}\n{out}")
+    return "Dependencies:\n" + "\n".join(parts)
+
+_SYNTAX_CHECKERS = {
+    ".py": "python3 -m py_compile {path}",
+    ".js": "node --check {path}",
+    ".ts": "npx tsc --noEmit --lib es6 --strict {path}",
+    ".json": "python3 -c \"import json; json.load(open('{path}'))\"",
+    ".yaml": "python3 -c \"import yaml; yaml.safe_load(open('{path}'))\"",
+    ".yml": "python3 -c \"import yaml; yaml.safe_load(open('{path}'))\"",
+    ".sh": "bash -n {path}",
+}
+
+def _validate_syntax(path):
+    ext = os.path.splitext(path)[1]
+    if ext not in _SYNTAX_CHECKERS:
+        return ""
+    cmd = _SYNTAX_CHECKERS[ext].format(path=path)
+    out = execute(cmd, timeout=30)
+    if out.strip() in ("", "OK"):
+        return ""
+    if "error" in out.lower() or "traceback" in out.lower():
+        return f"  Syntax check ({os.path.basename(path)}):\n{out}"
+    return ""
 
 def _security_scan():
     r = []
@@ -530,25 +626,42 @@ def detect_local(q):
                 return LOCAL[key]
     return None
 
-def inline_mode(query):
-    local = detect_local(query)
+def handle_do(query):
+    """Universal dispatcher: local commands → shell execution → AI fallback."""
+    q = query.strip()
+    local = detect_local(q)
     if local:
-        result = local()
-        print(f"\n{box(result, 92)}\n")
-        return
+        return ("local", local())
+    result = execute(q)
+    if "BLOCKED" not in result and "[Exit code:" not in result:
+        return ("shell", result)
+    return ("ai", q)
 
-    print()
-    resp = stream_response([
-        {"role": "system", "content": SYS_PROMPT},
-        {"role": "user", "content": query}
-    ])
-    print()
-
-    if "EXECUTE:" in resp or "WRITE:" in resp:
-        r = run_commands(resp)
-        if r:
-            print(box(r, 93))
-            print()
+def inline_mode(query):
+    if query.lower().startswith("do "):
+        action, value = handle_do(query[3:])
+        if action != "ai":
+            print(f"\n{box(value, 92)}\n")
+            return
+        query = value
+        print()
+        resp = stream_response([
+            {"role": "system", "content": SYS_PROMPT},
+            {"role": "user", "content": query}
+        ])
+        print()
+        if "EXECUTE:" in resp or "WRITE:" in resp:
+            r, created = run_commands(resp)
+            if r:
+                print(box(r, 93))
+                print()
+    else:
+        print()
+        resp = stream_response([
+            {"role": "system", "content": QUERY_PROMPT},
+            {"role": "user", "content": query}
+        ])
+        print()
 
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
@@ -558,7 +671,7 @@ def main():
     print(box("tell - AI Coding Agent"))
     print()
 
-    msgs = [{"role": "system", "content": SYS_PROMPT}]
+    msgs = [{"role": "system", "content": QUERY_PROMPT}]
 
     while True:
         try:
@@ -571,8 +684,8 @@ def main():
         if u.lower() == "clear": print("\033[2J\033[H", end=""); continue
         if u.lower() in ("help","commands"):
             cmds = "\n".join(f"  {k}" for k in sorted(LOCAL))
-            print(f"\n{box(f'Local commands:\\n{cmds}', 92)}")
-            print(f"\n{box('Also: run <cmd>, read <file>, border, reset, clear', 92)}\n")
+            print(f"\n{box(f'Built-in commands:\\n{cmds}', 92)}")
+            print(f"\n{box('do <task> - coding/system tasks  |  border  |  reset  |  clear  |  help', 92)}\n")
             continue
         if u.lower() == "border":
             global _border_style
@@ -582,45 +695,41 @@ def main():
             print(f"\n{box(f'Border style: {_border_style}', 93)}\n")
             continue
         if u.lower() == "reset":
-            msgs = [{"role":"system","content":SYS_PROMPT}]
+            msgs = [{"role":"system","content":QUERY_PROMPT}]
             print(box("Conversation reset", 92)); print(); continue
 
-        local = detect_local(u)
-        if local:
-            print(f"\n{box(local(), 92)}\n")
-            continue
-
-        if u.startswith("run "):
-            print(f"\n{box(execute(u[4:]), 92)}\n")
-            continue
-
-        if u.startswith("read "):
-            path = u[5:].strip()
-            if not is_safe_path(path):
-                print(f"\n{box('BLOCKED: cannot read outside allowed directories', 91)}\n")
+        if u.lower().startswith("do "):
+            msgs[0] = {"role": "system", "content": SYS_PROMPT}
+            action, value = handle_do(u[3:])
+            if action != "ai":
+                print(f"\n{box(value, 92)}\n")
                 continue
-            try:
-                with open(os.path.abspath(os.path.expanduser(path))) as f:
-                    print(f"\n{box(f.read(), 92)}\n")
-            except Exception as e:
-                print(box(f"Error: {e}", 91))
-            continue
+            u = value
+            msgs.append({"role": "user", "content": u})
+            print()
+            resp = stream_response(msgs)
+            print()
+            cmd_results = ""
+            if "EXECUTE:" in resp or "WRITE:" in resp:
+                r, created = run_commands(resp)
+                if r:
+                    print(box(r, 93))
+                    print()
+                    cmd_results = r
+            msgs.append({"role": "assistant", "content": resp})
+            if cmd_results:
+                msgs.append({"role": "system", "content": f"[Command results from previous turn:\n{cmd_results}\n]"})
+        else:
+            if msgs[0]["content"] != QUERY_PROMPT:
+                msgs[0] = {"role": "system", "content": QUERY_PROMPT}
+            msgs.append({"role": "user", "content": u})
+            print()
+            resp = stream_response(msgs)
+            print()
+            msgs.append({"role": "assistant", "content": resp})
 
-        msgs.append({"role": "user", "content": u})
-
-        print()
-        resp = stream_response(msgs)
-        print()
-
-        if "EXECUTE:" in resp or "WRITE:" in resp:
-            r = run_commands(resp)
-            if r:
-                print(box(r, 93))
-                print()
-        msgs.append({"role": "assistant", "content": resp})
-
-        if len(msgs) > 40:
-            msgs = [msgs[0]] + msgs[-20:]
+        if len(msgs) > 60:
+            msgs = [msgs[0]] + msgs[-40:]
 
 if __name__ == "__main__":
     main()

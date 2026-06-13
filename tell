@@ -8,12 +8,16 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 if [ $# -eq 0 ]; then
-    echo "Usage: tell <your request>"
+    echo "Usage: tell <question>   or   tell \"do <task>\""
+    echo ""
+    echo "  tell <question>           — Answer queries (no system actions)"
+    echo "  tell \"do <task>\"          — System/coding tasks"
     echo ""
     echo "Examples:"
-    echo "  tell \"create a flask app\""
-    echo "  tell \"check disk usage\""
-    echo "  tell \"update my system\""
+    echo "  tell \"what is python?\""
+    echo "  tell \"do create a flask app\""
+    echo "  tell \"do check disk usage\""
+    echo "  tell \"do ls -la\""
     exit 1
 fi
 
