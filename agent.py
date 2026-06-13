@@ -3,7 +3,9 @@
 tell - AI coding & system agent
 Security: API key via env var, path validation, dangerous command blocking
 """
-import requests, json, os, sys, subprocess, shutil, time, threading, itertools, textwrap, re, random
+import requests, json, os, sys, subprocess, shutil, time, threading, itertools, textwrap, re, random, platform
+
+IS_WINDOWS = platform.system() == "Windows"
 
 INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 API_KEY = os.environ.get("NVIDIA_API_KEY")
@@ -26,7 +28,11 @@ MODELS = (
 )
 _last_model = 0
 
-ALLOWED_WRITE_DIRS = [os.getcwd(), os.path.expanduser("~"), "/tmp"]
+ALLOWED_WRITE_DIRS = [os.getcwd(), os.path.expanduser("~")]
+if IS_WINDOWS:
+    ALLOWED_WRITE_DIRS.extend([os.environ.get("TEMP", "C:\\Temp"), os.environ.get("TMP", "C:\\Temp")])
+else:
+    ALLOWED_WRITE_DIRS.append("/tmp")
 MAX_FILE_SIZE = 1024 * 1024
 DANGEROUS_CMDS = [
     "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "> /dev/sda",
@@ -34,6 +40,8 @@ DANGEROUS_CMDS = [
     "reboot", "poweroff", "halt", "init 0", "init 6", "chmod 777 /",
     "chmod 777 /*", "chown ", "passwd", "useradd", "userdel",
     "usermod", "groupadd", "groupdel",
+    "format c:", "format c:\\", "del /f /s", "rd /s /q",
+    "diskpart", "reg delete", "net user", "sc delete",
 ]
 
 SYS_PROMPT = """You are a system-level AI assistant with full shell and file access.
@@ -186,8 +194,9 @@ def execute(cmd, timeout=120):
     if is_dangerous(cmd):
         return "BLOCKED: dangerous command rejected"
     try:
+        shell = ["cmd", "/c", cmd] if IS_WINDOWS else ["sh", "-c", cmd]
         r = subprocess.run(
-            ["sh", "-c", cmd],
+            shell,
             capture_output=True, text=True, timeout=timeout
         )
         out = r.stdout
@@ -551,47 +560,150 @@ def _validate_syntax(path):
         return f"  Syntax check ({os.path.basename(path)}):\n{out}"
     return ""
 
+_DISK_ROOT = '/' if not IS_WINDOWS else os.getenv('SystemDrive', 'C:') + '\\'
+
+def _cmd_disk():
+    u = shutil.disk_usage(_DISK_ROOT)
+    return f"Disk Used: {u.used//(1024**3)}GB / {u.total//(1024**3)}GB ({u.used/u.total*100:.1f}%)"
+
+def _cmd_memory():
+    m = __import__('psutil').virtual_memory()
+    return f"RAM: {m.used//(1024**2)}MB / {m.total//(1024**2)}MB ({m.percent}%)"
+
+def _cmd_procs():
+    if IS_WINDOWS:
+        return execute("tasklist")
+    return execute("ps aux --sort=-%cpu | head -10")
+
+def _cmd_uptime():
+    if IS_WINDOWS:
+        try:
+            import psutil, datetime
+            b = datetime.datetime.fromtimestamp(psutil.boot_time())
+            d = datetime.datetime.now() - b
+            return f"Up {d.days}d {d.seconds//3600}h {(d.seconds//60)%60}m"
+        except Exception:
+            return execute("wmic os get lastbootuptime")
+    return execute("uptime")
+
+def _cmd_date():
+    if IS_WINDOWS:
+        return execute("echo %date% %time%")
+    return execute("date")
+
+def _cmd_pwd():
+    if IS_WINDOWS:
+        return os.getcwd()
+    return execute("pwd")
+
+def _cmd_ip():
+    if IS_WINDOWS:
+        return execute("ipconfig | findstr IPv4")
+    return execute("ip addr | grep inet")
+
+def _cmd_network():
+    if IS_WINDOWS:
+        return execute("ipconfig /all")
+    return execute("ip addr")
+
+def _cmd_ports():
+    if IS_WINDOWS:
+        return execute("netstat -ano")
+    return execute("ss -tlnp")
+
+def _cmd_sysinfo():
+    if IS_WINDOWS:
+        return execute("systeminfo | findstr /B /C:OS")
+    return execute("uname -a")
+
+def _cmd_services():
+    if IS_WINDOWS:
+        return execute("sc query state= all")
+    return execute("systemctl list-units --type=service --state=running 2>/dev/null | head -20")
+
+def _cmd_fw():
+    if IS_WINDOWS:
+        return execute("netsh advfirewall show allprofiles")
+    return execute("(ufw status verbose 2>/dev/null || firewall-cmd --list-all 2>/dev/null); iptables -L -n 2>/dev/null | head -20; echo '---'")
+
+def _cmd_updates():
+    if IS_WINDOWS:
+        return execute("winget upgrade 2>nul || echo 'winget not available'")
+    return execute("apt list --upgradable 2>/dev/null | head -20 || dnf check-update 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'")
+
+def _cmd_users():
+    if IS_WINDOWS:
+        return execute("query user 2>nul || echo 'query user not available'")
+    return execute("who -u")
+
+def _cmd_logins():
+    if IS_WINDOWS:
+        return execute("wevtutil qe Security /rd:true /f:text /c:5 /q:\"*[System[EventID=4624]]\" 2>nul || echo 'Event log access not available'")
+    return execute("last -10 2>/dev/null")
+
+def _cmd_scan():
+    if IS_WINDOWS:
+        return execute("echo --- PORTS --- && netstat -ano && echo --- PROCS --- && tasklist && echo --- DISK --- && wmic logicaldisk get size,freespace,caption && echo --- MEM --- && wmic os get TotalVisibleMemorySize,FreePhysicalMemory")
+    return execute("echo '--- PORTS ---' && ss -tlnp 2>/dev/null && echo '--- TOP PROCS ---' && ps aux --sort=-%cpu | head -10 && echo '--- DISK ---' && df -h && echo '--- MEM ---' && free -h")
+
+def _cmd_suid():
+    if IS_WINDOWS:
+        return "N/A (not applicable on Windows)"
+    return execute("find /usr/bin /usr/sbin -perm -4000 -type f 2>/dev/null")
+
 def _security_scan():
     r = []
-    r.append("=== Open Ports ===")
-    r.append(execute("ss -tlnp 2>/dev/null"))
-    r.append("=== Running Services ===")
-    r.append(execute("systemctl list-units --type=service --state=running 2>/dev/null | head -15"))
-    r.append("=== SUID Files ===")
-    r.append(execute("find /usr/bin /usr/sbin -perm -4000 -type f 2>/dev/null"))
-    r.append("=== Firewall ===")
-    r.append(execute("ufw status 2>/dev/null || firewall-cmd --list-all 2>/dev/null || echo 'no firewall frontend'; iptables -L -n 2>/dev/null | head -10; echo '--- done ---'"))
-    r.append("=== Failed Logins ===")
-    r.append(execute("lastb 2>/dev/null | head -5 || echo 'none'"))
-    r.append("=== Disk ===")
-    r.append(execute("df -h /"))
-    r.append("=== Memory ===")
-    r.append(execute("free -h"))
+    if IS_WINDOWS:
+        r.append("=== Open Ports ===")
+        r.append(execute("netstat -ano"))
+        r.append("=== Running Services ===")
+        r.append(execute("sc query state= all | findstr SERVICE_NAME"))
+        r.append("=== Firewall ===")
+        r.append(execute("netsh advfirewall show allprofiles"))
+        r.append("=== Disk ===")
+        r.append(execute("wmic logicaldisk get size,freespace,caption"))
+        r.append("=== Memory ===")
+        r.append(execute("wmic os get TotalVisibleMemorySize,FreePhysicalMemory"))
+    else:
+        r.append("=== Open Ports ===")
+        r.append(execute("ss -tlnp 2>/dev/null"))
+        r.append("=== Running Services ===")
+        r.append(execute("systemctl list-units --type=service --state=running 2>/dev/null | head -15"))
+        r.append("=== SUID Files ===")
+        r.append(execute("find /usr/bin /usr/sbin -perm -4000 -type f 2>/dev/null"))
+        r.append("=== Firewall ===")
+        r.append(execute("ufw status 2>/dev/null || firewall-cmd --list-all 2>/dev/null || echo 'no firewall frontend'; iptables -L -n 2>/dev/null | head -10; echo '--- done ---'"))
+        r.append("=== Failed Logins ===")
+        r.append(execute("lastb 2>/dev/null | head -5 || echo 'none'"))
+        r.append("=== Disk ===")
+        r.append(execute("df -h /"))
+        r.append("=== Memory ===")
+        r.append(execute("free -h"))
     return '\n'.join(r)
 
 LOCAL = {
-    "disk": lambda: f"Disk Used: {shutil.disk_usage('/').used//(1024**3)}GB / {shutil.disk_usage('/').total//(1024**3)}GB ({shutil.disk_usage('/').used/shutil.disk_usage('/').total*100:.1f}%)",
-    "memory": lambda: (m := __import__('psutil').virtual_memory()) and f"RAM: {m.used//(1024**2)}MB / {m.total//(1024**2)}MB ({m.percent}%)",
-    "procs": lambda: execute("ps aux --sort=-%cpu | head -10"),
-    "ps": lambda: execute("ps aux --sort=-%cpu | head -10"),
-    "uptime": lambda: execute("uptime"),
+    "disk": _cmd_disk,
+    "memory": _cmd_memory,
+    "procs": _cmd_procs,
+    "ps": _cmd_procs,
+    "uptime": _cmd_uptime,
     "whoami": lambda: execute("whoami"),
-    "date": lambda: execute("date"),
-    "pwd": lambda: execute("pwd"),
-    "ip": lambda: execute("ip addr | grep inet"),
-    "network": lambda: execute("ip addr"),
-    "netstat": lambda: execute("ss -tlnp"),
-    "ports": lambda: execute("ss -tlnp"),
-    "sysinfo": lambda: execute("uname -a"),
-    "services": lambda: execute("systemctl list-units --type=service --state=running 2>/dev/null | head -20"),
-    "fw": lambda: execute("(ufw status verbose 2>/dev/null || firewall-cmd --list-all 2>/dev/null); iptables -L -n 2>/dev/null | head -20; echo '---'"),
-    "firewall": lambda: execute("(ufw status verbose 2>/dev/null || firewall-cmd --list-all 2>/dev/null); iptables -L -n 2>/dev/null | head -20; echo '---'"),
-    "updates": lambda: execute("apt list --upgradable 2>/dev/null | head -20 || dnf check-update 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'"),
-    "upgradable": lambda: execute("apt list --upgradable 2>/dev/null | head -20 || dnf check-update 2>/dev/null | head -20 || yum list updates 2>/dev/null | head -20 || echo 'no package manager found'"),
-    "users": lambda: execute("who -u"),
-    "logins": lambda: execute("last -10 2>/dev/null"),
-    "scan": lambda: execute("echo '--- PORTS ---' && ss -tlnp 2>/dev/null && echo '--- TOP PROCS ---' && ps aux --sort=-%cpu | head -10 && echo '--- DISK ---' && df -h && echo '--- MEM ---' && free -h"),
-    "suid": lambda: execute("find /usr/bin /usr/sbin -perm -4000 -type f 2>/dev/null"),
+    "date": _cmd_date,
+    "pwd": _cmd_pwd,
+    "ip": _cmd_ip,
+    "network": _cmd_network,
+    "netstat": _cmd_ports,
+    "ports": _cmd_ports,
+    "sysinfo": _cmd_sysinfo,
+    "services": _cmd_services,
+    "fw": _cmd_fw,
+    "firewall": _cmd_fw,
+    "updates": _cmd_updates,
+    "upgradable": _cmd_updates,
+    "users": _cmd_users,
+    "logins": _cmd_logins,
+    "scan": _cmd_scan,
+    "suid": _cmd_suid,
     "security": _security_scan,
 }
 
