@@ -28,6 +28,17 @@ MODELS = (
 )
 _last_model = 0
 
+QUERY_MODELS = (
+    [m.strip() for m in _env_models.split(",") if m.strip()]
+    if _env_models
+    else [
+        "meta/llama-3.1-8b-instruct",
+        "microsoft/phi-3-mini-4k-instruct",
+        "stepfun-ai/step-3.7-flash",
+        "minimaxai/minimax-m2.7",
+    ]
+)
+
 ALLOWED_WRITE_DIRS = [os.getcwd(), os.path.expanduser("~")]
 if IS_WINDOWS:
     ALLOWED_WRITE_DIRS.extend([os.environ.get("TEMP", "C:\\Temp"), os.environ.get("TMP", "C:\\Temp")])
@@ -119,32 +130,28 @@ EXECUTE: pip install -r requirements.txt
 
 To run it: python app.py"""
 
-QUERY_PROMPT = """You are a direct question-answering assistant. Give the answer only — no thinking, no planning.
+QUERY_PROMPT = """You are a senior technical consultant. Answer questions thoroughly and accurately with specific, actionable details.
 
-OUTPUT RULES:
-- Output ONLY the structured answer. NEVER include your reasoning process.
-- Do not say "Got it", "Let's", "First", "Wait", "I'll", "Okay" — nothing before the answer.
-- Do not narrate how you will structure the answer. Just output it.
-
-ANSWER FORMAT:
-Title line
+Output the final answer directly in this format:
 
 Key Steps:
- 1 Label:
-    - Subpoint
-    - Subpoint
- 2 Label:
-    - Subpoint
 
-Example Questions:
- 1 Question text
- 2 Question text
+ 1 Step Name:
+    - Specific action with concrete tools, techniques, or metrics
+    - Another specific action
 
-Example Answers:
- 1 Answer text
- 2 Answer text
+ 2 Step Name:
+    - Specific action with concrete tools, techniques, or metrics
+    - Another specific action
 
-No markdown. No thinking. Just the answer."""
+Rules:
+- Add blank lines between every step
+- Be specific: mention real tools, techniques, and concrete actions
+- Be thorough — cover all relevant points in depth
+- Output the final answer only — no thinking out loud
+- No markdown formatting (no **, *, _)
+- Backticks `like this` for inline code only
+- End with a relevant follow-up question"""
 
 BORDER_STYLES = {
     "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
@@ -244,32 +251,33 @@ def _clean(text):
 
 def _strip_reasoning(text):
     lines = text.split('\n')
-    skip_prefixes = ('got ', 'let ', 'first,', 'first let', 'wait,', 'okay', "i'll", "let's", 'hmm,', 'actually', 'oh ', 'make sure')
+    skip_prefixes = ('got ', 'let ', 'first,', 'first let', 'wait,', 'okay', "i'll", "let's", 'hmm,', 'oh ', 'make sure')
     answer_start = 0
     in_answer = False
     for i, line in enumerate(lines):
         s = line.strip()
         if not s:
-            if in_answer:
-                answer_start = max(0, i - 20)
             continue
         lower = s.lower()
         if any(lower.startswith(p) for p in skip_prefixes):
             continue
-        if lower.startswith(('wait', 'let me', 'that\'s', 'oh right', 'let me check', 'let me make', 'example q', 'example a', 'then example')):
+        if lower.startswith(('wait,', 'let me check', 'oh right', 'let me make', 'that\'s right')):
             if not in_answer:
                 continue
-            break
+            if i > len(lines) * 0.7:
+                break
+            continue
         in_answer = True
         if not answer_start:
             answer_start = i
 
     result = lines[answer_start:]
     clean = []
-    for line in result:
+    for idx, line in enumerate(result):
         lower = line.strip().lower()
-        if lower.startswith(('wait', 'let me', 'oh right', "that's", 'example q', 'example a', 'then example')):
-            break
+        if lower.startswith(('wait,', 'let me check', 'oh right', 'let me make', "that's right")):
+            if idx > len(result) * 0.7:
+                break
         clean.append(line)
     return '\n'.join(clean).strip()
 
@@ -327,20 +335,21 @@ def _guess_tokens(messages):
     if total < 500: return 1024
     return 2048
 
-def ask(messages, max_tokens=None, max_retries=2):
+def ask(messages, max_tokens=None, max_retries=2, models=None):
     """Non-streaming fallback (for conversation history in interactive mode)."""
     global _last_model
     if max_tokens is None:
         max_tokens = _guess_tokens(messages)
+    model_list = models or MODELS
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
     model_idx = _last_model
-    for mi in range(len(MODELS)):
-        idx = (model_idx + mi) % len(MODELS)
-        model = MODELS[idx]
+    for mi in range(len(model_list)):
+        idx = (model_idx + mi) % len(model_list)
+        model = model_list[idx]
         payload = {
             "model": model, "messages": messages,
             "max_tokens": max_tokens, "temperature": 0.5,
@@ -348,7 +357,7 @@ def ask(messages, max_tokens=None, max_retries=2):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(10, 30))
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 120))
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
@@ -385,7 +394,7 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
         }
         for attempt in range(max_retries):
             try:
-                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(10, 30), stream=True)
+                r = _session.post(INVOKE_URL, headers=headers, json=payload, timeout=(15, 120), stream=True)
                 if r.status_code == 429:
                     time.sleep(0.5)
                     continue
@@ -816,12 +825,14 @@ def inline_mode(query):
         resp = ask([
             {"role": "system", "content": QUERY_PROMPT},
             {"role": "user", "content": query}
-        ], max_tokens=2048)
+        ], max_tokens=4096, models=QUERY_MODELS)
         resp = _strip_reasoning(resp)
         if resp:
             print()
             print(box(resp, 93))
             print()
+        else:
+            print(box("No response generated", 91))
 
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
@@ -883,12 +894,14 @@ def main():
             if msgs[0]["content"] != QUERY_PROMPT:
                 msgs[0] = {"role": "system", "content": QUERY_PROMPT}
             msgs.append({"role": "user", "content": u})
-            resp = ask(msgs, max_tokens=2048)
+            resp = ask(msgs, max_tokens=4096, models=QUERY_MODELS)
             resp = _strip_reasoning(resp)
             if resp:
                 print()
                 print(box(resp, 93))
                 print()
+            if not resp:
+                resp = "No response"
             msgs.append({"role": "assistant", "content": resp})
 
         if len(msgs) > 60:
