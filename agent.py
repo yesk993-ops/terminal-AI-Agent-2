@@ -71,6 +71,8 @@ Organize every answer with:
 4. Files - Use WRITE: for each
 5. Summary - What was done, key results, next steps
 
+CRITICAL: Output only the answer. Never include your internal reasoning process, planning, or self-talk. No "Got it", "Let's", "First,", "Wait", or similar.
+
 TONE:
 - Friendly and professional
 - Explain why you're doing something
@@ -117,27 +119,32 @@ EXECUTE: pip install -r requirements.txt
 
 To run it: python app.py"""
 
-QUERY_PROMPT = """You are a helpful AI assistant. Answer questions in a clear structured format.
+QUERY_PROMPT = """You are a direct question-answering assistant. Give the answer only — no thinking, no planning.
 
-REQUIRED OUTPUT FORMAT (strict — follow exactly):
-1. Start with a short title line
-2. Then "Key Steps:" section with numbered items and bullet subpoints:
-     Number Item Label:
-       - Subpoint one
-       - Subpoint two
-3. If applicable, add "Example Questions:" and "Example Answers:" sections
+OUTPUT RULES:
+- Output ONLY the structured answer. NEVER include your reasoning process.
+- Do not say "Got it", "Let's", "First", "Wait", "I'll", "Okay" — nothing before the answer.
+- Do not narrate how you will structure the answer. Just output it.
 
-FORMATTING RULES:
-- NEVER use **, *, _, or markdown formatting
-- Use plain text only
-- Use backticks `like this` for inline code
+ANSWER FORMAT:
+Title line
 
-TONE RULES:
-- Direct, concise, professional
-- Start with the answer immediately — NO filler phrases like "Got it", "Let's", "First,"
-- End with a relevant follow-up
+Key Steps:
+ 1 Label:
+    - Subpoint
+    - Subpoint
+ 2 Label:
+    - Subpoint
 
-You only answer questions. You do not execute commands or create files."""
+Example Questions:
+ 1 Question text
+ 2 Question text
+
+Example Answers:
+ 1 Answer text
+ 2 Answer text
+
+No markdown. No thinking. Just the answer."""
 
 BORDER_STYLES = {
     "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
@@ -234,6 +241,37 @@ def write_file(path, content):
 def _clean(text):
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     return text
+
+def _strip_reasoning(text):
+    lines = text.split('\n')
+    skip_prefixes = ('got ', 'let ', 'first,', 'first let', 'wait,', 'okay', "i'll", "let's", 'hmm,', 'actually', 'oh ', 'make sure')
+    answer_start = 0
+    in_answer = False
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if not s:
+            if in_answer:
+                answer_start = max(0, i - 20)
+            continue
+        lower = s.lower()
+        if any(lower.startswith(p) for p in skip_prefixes):
+            continue
+        if lower.startswith(('wait', 'let me', 'that\'s', 'oh right', 'let me check', 'let me make', 'example q', 'example a', 'then example')):
+            if not in_answer:
+                continue
+            break
+        in_answer = True
+        if not answer_start:
+            answer_start = i
+
+    result = lines[answer_start:]
+    clean = []
+    for line in result:
+        lower = line.strip().lower()
+        if lower.startswith(('wait', 'let me', 'oh right', "that's", 'example q', 'example a', 'then example')):
+            break
+        clean.append(line)
+    return '\n'.join(clean).strip()
 
 def extract_content(data):
     msg = data.get("choices", [{}])[0].get("message", {})
@@ -775,12 +813,15 @@ def inline_mode(query):
                 print(box(r, 93))
                 print()
     else:
-        print()
-        resp = stream_response([
+        resp = ask([
             {"role": "system", "content": QUERY_PROMPT},
             {"role": "user", "content": query}
-        ])
-        print()
+        ], max_tokens=2048)
+        resp = _strip_reasoning(resp)
+        if resp:
+            print()
+            print(box(resp, 93))
+            print()
 
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
@@ -842,9 +883,12 @@ def main():
             if msgs[0]["content"] != QUERY_PROMPT:
                 msgs[0] = {"role": "system", "content": QUERY_PROMPT}
             msgs.append({"role": "user", "content": u})
-            print()
-            resp = stream_response(msgs)
-            print()
+            resp = ask(msgs, max_tokens=2048)
+            resp = _strip_reasoning(resp)
+            if resp:
+                print()
+                print(box(resp, 93))
+                print()
             msgs.append({"role": "assistant", "content": resp})
 
         if len(msgs) > 60:
