@@ -18,12 +18,9 @@ MODELS = (
     [m.strip() for m in _env_models.split(",") if m.strip()]
     if _env_models
     else [
+        "meta/llama-3.1-8b-instruct",
         "stepfun-ai/step-3.7-flash",
         "minimaxai/minimax-m2.7",
-        "deepseek-v4-flash",
-        "z-ai/glm4.7",
-        "meta/llama-3.1-8b-instruct",
-        "microsoft/phi-3-mini-4k-instruct",
     ]
 )
 _last_model = 0
@@ -33,9 +30,6 @@ QUERY_MODELS = (
     if _env_models
     else [
         "meta/llama-3.1-8b-instruct",
-        "microsoft/phi-3-mini-4k-instruct",
-        "stepfun-ai/step-3.7-flash",
-        "minimaxai/minimax-m2.7",
     ]
 )
 
@@ -130,27 +124,43 @@ EXECUTE: pip install -r requirements.txt
 
 To run it: python app.py"""
 
-QUERY_PROMPT = """You are a senior technical consultant. Answer questions thoroughly and accurately with specific, actionable details.
+QUERY_PROMPT = """You are a senior technical consultant who gives detailed, insightful answers.
 
-Output the final answer directly in this format:
+Structure every answer like this:
 
 Key Steps:
 
  1 Step Name:
-    - Specific action with concrete tools, techniques, or metrics
-    - Another specific action
+    - Specific action with real tools and concrete details
+    - Another specific, detailed action
 
  2 Step Name:
-    - Specific action with concrete tools, techniques, or metrics
-    - Another specific action
+    - Specific action with real tools and concrete details
+    - Another specific, detailed action
 
-Rules:
-- Add blank lines between every step
-- Be specific: mention real tools, techniques, and concrete actions
-- Be thorough — cover all relevant points in depth
-- Output the final answer only — no thinking out loud
+Here is an example of the expected depth and specificity (apply this level of detail to every answer):
+
+ EXAMPLE for "how to improve database query performance":
+
+ Key Steps:
+
+  1 Analyze Slow Queries:
+     - Enable `pg_stat_statements` in PostgreSQL or `sys.dm_exec_query_stats` in SQL Server to capture query execution plans, frequency, and total runtime, then sort by total time to find the worst offenders
+     - Use `EXPLAIN ANALYZE` to identify full table scans, missing indexes, or incorrect join orders as root causes
+
+  2 Optimize Indexing Strategy:
+     - Add composite indexes for columns used together in WHERE clauses using `CREATE INDEX CONCURRENTLY` to avoid locking production tables, and remove unused indexes identified by `pg_stat_user_indexes` to reduce write overhead
+     - Use covering indexes with INCLUDE columns for frequently accessed queries to avoid expensive key lookups
+
+This is a demonstration of the required specificity. Now answer the user's question with this same level of detail.
+
+Guidelines:
+- Be specific: mention real tools (Docker, pytest, GitHub Actions, GitLab CI, S3, Redis, Kubernetes, Terraform, etc.) and concrete metrics
+- Always explain HOW to implement, not just WHAT to do
+- Separate every step with a blank line
+- Output the final answer only — no thinking out loud, no self-talk, no planning phrases
 - No markdown formatting (no **, *, _)
-- Backticks `like this` for inline code only
+- Use backticks `like this` for inline code only
 - End with a relevant follow-up question"""
 
 BORDER_STYLES = {
@@ -250,36 +260,41 @@ def _clean(text):
     return text
 
 def _strip_reasoning(text):
+    lower = text.lower()
+    if not any(p in lower for p in ('wait,', 'let me', 'oh right', "that's", "first let's", "first step should", 'make sure')):
+        return text
     lines = text.split('\n')
-    skip_prefixes = ('got ', 'let ', 'first,', 'first let', 'wait,', 'okay', "i'll", "let's", 'hmm,', 'oh ', 'make sure')
-    answer_start = 0
-    in_answer = False
-    for i, line in enumerate(lines):
-        s = line.strip()
-        if not s:
-            continue
-        lower = s.lower()
-        if any(lower.startswith(p) for p in skip_prefixes):
-            continue
-        if lower.startswith(('wait,', 'let me check', 'oh right', 'let me make', 'that\'s right')):
-            if not in_answer:
-                continue
-            if i > len(lines) * 0.7:
-                break
-            continue
-        in_answer = True
-        if not answer_start:
-            answer_start = i
-
-    result = lines[answer_start:]
-    clean = []
-    for idx, line in enumerate(result):
+    split_markers = ('wait', 'let me', 'oh right', 'okay, let', 'now let')
+    segments = []
+    current = []
+    for line in lines:
         lower = line.strip().lower()
-        if lower.startswith(('wait,', 'let me check', 'oh right', 'let me make', "that's right")):
-            if idx > len(result) * 0.7:
-                break
-        clean.append(line)
-    return '\n'.join(clean).strip()
+        is_marker = any(lower.startswith(m) for m in split_markers)
+        if is_marker and current:
+            segments.append(current)
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        segments.append(current)
+    best = segments[-1] if segments else lines
+    skip_start = ('got ', 'let ', 'first,', 'first step', 'second step', 'third step',
+                  'wait,', 'okay,', "i'll", "let's", 'hmm,', 'oh ', 'make sure',
+                  'then,', 'first,', 'now let', 'also,')
+    result = []
+    started = False
+    for line in best:
+        lower = line.strip().lower()
+        if not started:
+            if not line.strip():
+                continue
+            if any(lower.startswith(s) for s in skip_start):
+                continue
+            started = True
+        if lower.startswith(('wait,', 'let me', 'oh right', "that's", 'make sure', 'also, from an')):
+            break
+        result.append(line)
+    return '\n'.join(result).strip()
 
 def extract_content(data):
     msg = data.get("choices", [{}])[0].get("message", {})
@@ -335,7 +350,7 @@ def _guess_tokens(messages):
     if total < 500: return 1024
     return 2048
 
-def ask(messages, max_tokens=None, max_retries=2, models=None):
+def ask(messages, max_tokens=None, max_retries=2, models=None, temperature=0.5):
     """Non-streaming fallback (for conversation history in interactive mode)."""
     global _last_model
     if max_tokens is None:
@@ -352,8 +367,7 @@ def ask(messages, max_tokens=None, max_retries=2, models=None):
         model = model_list[idx]
         payload = {
             "model": model, "messages": messages,
-            "max_tokens": max_tokens, "temperature": 0.5,
-            "top_p": 0.95, "stream": False
+            "max_tokens": max_tokens, "temperature": temperature,
         }
         for attempt in range(max_retries):
             try:
@@ -825,7 +839,7 @@ def inline_mode(query):
         resp = ask([
             {"role": "system", "content": QUERY_PROMPT},
             {"role": "user", "content": query}
-        ], max_tokens=4096, models=QUERY_MODELS)
+        ], max_tokens=4096, models=QUERY_MODELS, temperature=0.6)
         resp = _strip_reasoning(resp)
         if resp:
             print()
@@ -894,7 +908,7 @@ def main():
             if msgs[0]["content"] != QUERY_PROMPT:
                 msgs[0] = {"role": "system", "content": QUERY_PROMPT}
             msgs.append({"role": "user", "content": u})
-            resp = ask(msgs, max_tokens=4096, models=QUERY_MODELS)
+            resp = ask(msgs, max_tokens=4096, models=QUERY_MODELS, temperature=0.6)
             resp = _strip_reasoning(resp)
             if resp:
                 print()
