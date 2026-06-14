@@ -1,0 +1,92 @@
+# Configuration management
+import os
+import json
+from typing import Dict, Any, List, Optional
+
+class TellConfig:
+    def __init__(self, config_path: str = ".tellrc"):
+        self.config_path = os.path.expanduser(config_path)
+        self.data = self._load_config()
+
+    def _load_config(self) -> Dict[str, Any]:
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return self._get_default_config()
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        return {
+            "models": {
+                "query": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
+                "system": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"]
+            },
+            "security": {
+                "allowed_write_dirs": [os.getcwd(), os.path.expanduser("~")],
+                "max_file_size": 1024 * 1024,
+                "dangerous_commands": [
+                    "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "> /dev/sda",
+                    "> /dev/sdb", "format /dev", "mkfs.", "mkswap", "shutdown",
+                    "reboot", "poweroff", "halt", "init 0", "init 6", "chmod 777 /",
+                    "chmod 777 /*", "chown ", "passwd", "useradd", "userdel",
+                    "usermod", "groupadd", "groupdel",
+                    "format c:", "format c:\\", "del /f /s", "rd /s /q",
+                    "diskpart", "reg delete", "net user", "sc delete",
+                ]
+            },
+            "ui": {
+                "border_style": "rounded",
+                "theme": "default"
+            },
+            "performance": {
+                "enable_caching": True,
+                "cache_ttl": 3600,
+                "max_retries": 3,
+                "timeout": 45
+            },
+            "behavior": {
+                "enable_command_history": True,
+                "max_history_size": 100,
+                "auto_install_deps": True
+            }
+        }
+
+    def save(self) -> bool:
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(self.data, f, indent=2)
+            return True
+        except Exception:
+            return False
+
+    def get(self, key: str, default: Any = None) -> Any:
+        keys = key.split('.')
+        value = self.data
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+
+    def set(self, key: str, value: Any) -> None:
+        keys = key.split('.')
+        target = self.data
+        for i, k in enumerate(keys[:-1]):
+            if k not in target:
+                target[k] = {}
+            target = target[k]
+        target[keys[-1]] = value
+
+    def update_from_env(self) -> None:
+        env_models = os.environ.get("NVIDIA_MODEL")
+        if env_models:
+            models = [m.strip() for m in env_models.split(",") if m.strip()]
+            self.set("models.query", models)
+            self.set("models.system", models)
+
+        tell_border = os.environ.get("TELL_BORDER")
+        if tell_border:
+            self.set("ui.border_style", tell_border)

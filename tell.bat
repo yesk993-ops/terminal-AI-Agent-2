@@ -21,4 +21,4 @@ if "%NVIDIA_API_KEY%"=="" (
     exit /b 1
 )
 
-python "%~dp0agent.py" --inline %*
+python "%~dp0main.py" --inline %*

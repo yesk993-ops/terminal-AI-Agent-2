@@ -24,4 +24,4 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-exec "$PYTHON" "$SCRIPT_DIR/agent.py"
+exec "$PYTHON" "$SCRIPT_DIR/main.py"

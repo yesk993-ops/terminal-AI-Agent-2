@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""
+Tell - Modular AI Coding Agent
+
+This is the entry point for the tell AI agent. It uses a modular structure:
+- core/agent.py: Main orchestration and agent logic
+- commands/: Local system commands
+- ui/: Display and interaction
+- security/: Validation and blocking
+- api/: NVIDIA API handling
+- config/: Configuration management
+- logger/: Logging system
+"""
+import os
+import sys
+import time
+from pathlib import Path
+
+# Add current directory to Python path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from core import TellAgent
+from logger import get_logger
+
+class AnimatedUI:
+    def __init__(self):
+        self.log = get_logger(__name__)
+        self.border_styles = {
+            "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
+            "classic": ("╔", "═", "╗", "║", "╚", "╝"),
+            "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
+            "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
+        }
+        self.current_style = "rounded"
+        
+    def get_terminal_width(self) -> int:
+        import shutil
+        return min(shutil.get_terminal_size().columns, 240)
+    
+    def animate_box(self, text: str, color: int = 93, delay: float = 0.05) -> None:
+        cols = self.get_terminal_width()
+        inner = cols - 4
+        tl, h, tr, v, bl, br = self.border_styles[self.current_style]
+        
+        lines = []
+        for raw in text.split('\n'):
+            for wrapped in self._wrap_text(raw, inner) or ['']:
+                lines.append(f"\033[{color}m{v} {wrapped:<{inner}}{v}\033[0m")
+        
+        top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
+        bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
+        
+        print(top)
+        for i, line in enumerate(lines):
+            print(line)
+            if delay > 0 and i < len(lines) - 1:
+                time.sleep(delay)
+        print(bot)
+        
+    def _wrap_text(self, text: str, width: int) -> list:
+        import textwrap
+        return textwrap.wrap(text, width) or ['']
+    
+    def cycle_border_style(self) -> None:
+        styles = list(self.border_styles.keys())
+        idx = (styles.index(self.current_style) + 1) % len(styles)
+        self.current_style = styles[idx]
+        self.log.info(f"Border style changed to: {self.current_style}")
+
+def main():
+    """Main entry point"""
+    log = get_logger(__name__)
+    animated_ui = AnimatedUI()
+    
+    if len(sys.argv) > 2 and sys.argv[1] == "--inline":
+        # Inline mode - direct execution
+        from core import TellAgent
+        agent = TellAgent()
+        
+        query = sys.argv[2].lower()
+        
+        if query.startswith("do "):
+            task = sys.argv[2][3:].strip()
+            action, value = agent.commands.execute(task)
+            
+            if action != "ai":
+                animated_ui.animate_box(value)
+                print()
+                return
+                
+            agent.add_message("user", task)
+            response = agent.api.generate_response(agent.get_messages())
+            agent.add_message("assistant", response)
+            animated_ui.animate_box(response)
+            print()
+            
+        elif query in ("history", "hist", "help", "commands", "border", "reset", "clear"):
+            if query == "help" or query == "commands":
+                help_text = agent.get_help()
+                animated_ui.animate_box(help_text)
+                print()
+            elif query == "history" or query == "hist":
+                hist_text = agent.show_history(10)
+                animated_ui.animate_box(hist_text)
+                print()
+            elif query == "border":
+                agent.ui.cycle_border_style()
+                animated_ui.animate_box(f"Border style: {agent.ui.border_style}")
+                print()
+            elif query == "reset":
+                agent.clear_history()
+                animated_ui.animate_box("Conversation reset")
+                print()
+            elif query == "clear":
+                animated_ui.animate_box("Cleared screen")
+                print()
+            
+        else:
+            agent.add_message("user", sys.argv[2])
+            response = agent.process_query(sys.argv[2])
+            animated_ui.animate_box(response)
+            print()
+        
+        return
+    
+    # Full interactive mode
+    agent = TellAgent()
+    agent.run()
+if __name__ == "__main__":
+    import time
+    main()
