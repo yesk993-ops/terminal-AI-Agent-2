@@ -1,5 +1,6 @@
 import requests
 import json
+import re
 import time
 from typing import List, Dict, Any, Generator, Optional
 
@@ -175,6 +176,30 @@ class NVIDIAAgent:
 
     def _clean_text(self, text: str) -> str:
         text = self._strip_reasoning(text)
+        if not text:
+            return text
+        # Remove markdown bold **text**
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+        # Remove markdown italic *text*
+        text = re.sub(r'\*(.*?)\*', r'\1', text)
+        # Remove markdown headers ## Header
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        # Remove inline code `code`
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        # Remove code blocks ```code```
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        # Remove horizontal rules ---
+        text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
+        # Remove markdown links [text](url)
+        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+        # Remove blockquotes > text
+        text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+        # Remove table pipes |text|
+        text = re.sub(r'\|', ' ', text)
+        # Clean up multiple spaces
+        text = re.sub(r'  +', ' ', text)
+        # Clean up multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
     def _strip_reasoning(self, text: str) -> str:

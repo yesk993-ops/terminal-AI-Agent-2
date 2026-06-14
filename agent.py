@@ -192,28 +192,25 @@ To run it: python app.py"""
 
 QUERY_PROMPT = """You are an elite AI assistant with the quality of Claude, Gemini, or GPT-4. You provide exceptional, insightful, and well-researched answers that feel like talking to a world-class expert.
 
+FORMATTING RULES (STRICT):
+- NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
+- Use PLAIN TEXT ONLY
+- Use simple dashes - for lists
+- Use numbers 1. 2. 3. for ordered lists
+- Use backticks only for actual code commands
+- Keep it clean and readable
+- No special characters, no formatting symbols
+
 LANGUAGE RULES (CRITICAL):
-- ALWAYS respond in English unless the user EXPLICITLY asks for another language (e.g., "in marathi", "hindi मध्ये", "मराठीत").
-- If the question is in English → respond in English.
-- If the question says "in marathi" or similar → respond in that language.
+- ALWAYS respond in English unless the user EXPLICITLY asks for another language.
+- If the question is in English, respond in English.
 - Never mix languages in the same response.
 - Default language: English.
-
-MARATHI LANGUAGE STYLE (when responding in Marathi):
-- Use natural, fluent, grammatically correct, modern Marathi.
-- Feel professional yet friendly — like a knowledgeable friend explaining something.
-- Use Marathi words and phrases naturally, not forced translations from English.
-- Use correct Marathi grammar: proper verb conjugations, postpositions, gender agreement.
-- Use modern Marathi vocabulary that young professionals would use.
-- Avoid overly formal or outdated Marathi. Keep it conversational and approachable.
-- Use Marathi punctuation and formatting conventions.
-- Example of good Marathi: "Python हा एक उच्च-स्तरीय भाषा आहे जो गाइडो व्हॅन रॉसमनने 1991 साली तयार केला."
-- Example of bad Marathi (forced translation): "Python एक high-level language आहे जी Guido van Rossum ने create केली."
 
 CORE RULES:
 - Be accurate. If you don't know something or lack real-time data, say so clearly.
 - Never hallucinate or make up facts. If your knowledge is outdated, acknowledge it.
-- For news/current events: Clearly state that your knowledge has a cutoff date and you cannot provide real-time updates. Suggest checking reliable news sources.
+- For news/current events: Clearly state that your knowledge has a cutoff date.
 - Start with a direct answer, then expand with details.
 - Use clear structure: headers, numbered lists, bullet points.
 - End with a relevant follow-up or suggestion.
@@ -222,8 +219,6 @@ RESPONSE QUALITY GUIDELINES:
 - Write like a knowledgeable expert, not a textbook.
 - Use analogies and real-world examples to explain complex ideas.
 - Be concise but thorough — depth over length.
-- Use code blocks when explaining technical concepts.
-- Bold key terms for emphasis.
 - Make it scannable — readers should get value in 10 seconds.
 - Add practical context: WHY something matters, not just WHAT it is.
 - For technical topics: include practical examples, common pitfalls, and best practices.
@@ -456,8 +451,31 @@ def write_file(path, content):
         return f"Error: {e}"
 
 def _clean(text):
+    if not text:
+        return text
+    # Remove markdown bold **text**
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    return text
+    # Remove markdown italic *text*
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Remove markdown headers ## Header
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Remove inline code `code`
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Remove code blocks ```code```
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # Remove horizontal rules ---
+    text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
+    # Remove markdown links [text](url)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove blockquotes > text
+    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    # Remove table pipes |text|
+    text = re.sub(r'\|', ' ', text)
+    # Clean up multiple spaces
+    text = re.sub(r'  +', ' ', text)
+    # Clean up multiple newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 def _strip_reasoning(text):
     lower = text.lower()
