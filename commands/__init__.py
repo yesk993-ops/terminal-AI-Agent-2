@@ -80,14 +80,15 @@ class LocalCommands:
             return None
             
         words = set(q.split())
+        # Check for direct keyword matches (even in long queries)
         for kw in self.command_map:
-            if kw in words and len(words) <= 3:
+            if kw in words:
                 return self.command_map[kw]
                 
-        if len(words) <= 4:
-            for phrase, key in self.phrase_map.items():
-                if phrase in q:
-                    return self.command_map[key]
+        # Check for phrase matches (even in long queries)
+        for phrase, key in self.phrase_map.items():
+            if phrase in q:
+                return self.command_map[key]
         return None
 
     def execute(self, query: str) -> Tuple[str, Any]:
