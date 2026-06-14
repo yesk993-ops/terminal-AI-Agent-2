@@ -151,10 +151,10 @@ class NVIDIAAgent:
             return 16384
             
         if total < 100:
-            return 512
+            return 4096
         if total < 500:
-            return 1024
-        return 2048
+            return 8192
+        return 16384
 
     def _extract_content(self, data: Dict[str, Any]) -> str:
         msg = data.get("choices", [{}])[0].get("message", {})
@@ -166,7 +166,6 @@ class NVIDIAAgent:
 
     def _clean_text(self, text: str) -> str:
         text = self._strip_reasoning(text)
-        text = text.replace("**", "")
         return text.strip()
 
     def _strip_reasoning(self, text: str) -> str:

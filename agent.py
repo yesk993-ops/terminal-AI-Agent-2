@@ -1050,11 +1050,11 @@ def inline_mode(query):
         resp = ask([
             {"role": "system", "content": QUERY_PROMPT},
             {"role": "user", "content": query}
-        ], max_tokens=4096, models=QUERY_MODELS, temperature=0.6)
+        ], max_tokens=16384, models=QUERY_MODELS, temperature=0.6)
         resp = _strip_reasoning(resp)
         if resp:
             print()
-            animated_box(resp, 93, delay=0.0003)
+            animated_box(resp, 97, delay=0.0003)
             print()
         else:
             print(box("No response generated", 91))
@@ -1123,11 +1123,11 @@ def main():
             if msgs[0]["content"] != QUERY_PROMPT:
                 msgs[0] = {"role": "system", "content": QUERY_PROMPT}
             msgs.append({"role": "user", "content": u})
-            resp = ask(msgs, max_tokens=4096, models=QUERY_MODELS, temperature=0.6)
+            resp = ask(msgs, max_tokens=16384, models=QUERY_MODELS, temperature=0.6)
             resp = _strip_reasoning(resp)
             if resp:
                 print()
-                animated_box(resp, 93, delay=0.0003)
+                animated_box(resp, 97, delay=0.0003)
                 print()
             if not resp:
                 resp = "No response"

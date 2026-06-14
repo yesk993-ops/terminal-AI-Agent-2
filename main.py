@@ -37,7 +37,7 @@ class AnimatedUI:
         import shutil
         return min(shutil.get_terminal_size().columns, 240)
     
-    def animate_box(self, text: str, color: int = 93, delay: float = 0.05) -> None:
+    def animate_box(self, text: str, color: int = 97, delay: float = 0.05) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.border_styles[self.current_style]
