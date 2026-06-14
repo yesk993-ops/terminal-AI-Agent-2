@@ -1,5 +1,5 @@
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 class CommandHistory:
     def __init__(self, max_size: int = 100):
