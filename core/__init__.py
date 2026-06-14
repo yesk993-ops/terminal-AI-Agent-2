@@ -213,11 +213,19 @@ RESPONSE FORMAT:
             if not user_input:
                 continue
                 
+            # Input length validation to prevent DoS
+            if len(user_input) > 10000:
+                self.ui.display_box("Input too long (max 10000 characters)")
+                print()
+                continue
+                
             if user_input.lower() in ("quit", "exit"):
                 break
                 
             if user_input.lower() == "clear":
-                os.system("cls" if os.name == "nt" else "clear")
+                # Use subprocess instead of os.system to prevent command injection
+                import subprocess
+                subprocess.run(["cls" if os.name == "nt" else "clear"], shell=False)
                 continue
                 
             if user_input.lower() in ("help", "commands"):

@@ -1,7 +1,7 @@
 import requests
 import json
 import time
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, Generator, Optional
 
 class NVIDIAAgent:
     def __init__(self, api_key: str, models: List[str], timeout: int = 45):
@@ -59,7 +59,11 @@ class NVIDIAAgent:
                     time.sleep(0.3)
                     continue
                 except Exception as e:
-                    return f"API Error: {e}"
+                    # Sanitize error to prevent API key leak
+                    err_str = str(e)
+                    if self.api_key and self.api_key in err_str:
+                        err_str = err_str.replace(self.api_key, "[REDACTED]")
+                    return f"API Error: {err_str}"
                     
         return "All models failed"
 
@@ -103,7 +107,8 @@ class NVIDIAAgent:
                         continue
                         
                     if r.status_code != 200:
-                        yield f"API Error {r.status_code}: {r.text[:100]}"
+                        # Don't leak sensitive response data
+                        yield f"API Error {r.status_code}"
                         return
                         
                     self.last_model_idx = idx
@@ -131,7 +136,11 @@ class NVIDIAAgent:
                     time.sleep(0.3)
                     continue
                 except Exception as e:
-                    yield f"Error: {e}"
+                    # Sanitize error to prevent API key leak
+                    err_str = str(e)
+                    if self.api_key and self.api_key in err_str:
+                        err_str = err_str.replace(self.api_key, "[REDACTED]")
+                    yield f"Error: {err_str}"
                     return
                     
             yield "All models failed"

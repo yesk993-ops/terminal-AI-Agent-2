@@ -334,7 +334,7 @@ if _border_style not in BORDER_STYLES:
 def term_width():
     return min(shutil.get_terminal_size().columns, 240)
 
-def box(text, color=93):
+def box(text, color=97):
     cols = term_width()
     inner = cols - 4
     tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
@@ -365,7 +365,7 @@ def typewrite(text, color=96, delay=0.0003):
         sys.stdout.flush()
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
-def animated_box(text, color=93, delay=0.02):
+def animated_box(text, color=97, delay=0.02):
     """Display text in a box with typewriter animation"""
     cols = term_width()
     inner = cols - 4
@@ -415,10 +415,14 @@ def execute(cmd, timeout=120):
         return "BLOCKED: dangerous command rejected"
     try:
         shell = ["cmd", "/c", cmd] if IS_WINDOWS else ["sh", "-c", cmd]
+        # Sanitize environment - remove dangerous vars that could enable injection
+        safe_env = {k: v for k, v in os.environ.items()
+                    if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+                                 "DYLD_LIBRARY_PATH", "PYTHONPATH", "BASH_ENV", "ENV")}
         r = subprocess.run(
             shell,
             capture_output=True, text=True, timeout=timeout,
-            env={**os.environ, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}  # Sanitize env
+            env={**safe_env, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         )
         out = r.stdout
         if r.stderr: out += "\n" + r.stderr
@@ -649,7 +653,7 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
     yield "All models failed"
 
 
-def stream_response(messages, color=93):
+def stream_response(messages, color=97):
     """Streams tokens into a live-bordered box. Returns the full collected text."""
     cols = term_width()
     inner = cols - 4
@@ -824,8 +828,9 @@ def _validate_syntax(path):
     # Validate path is safe before using in command
     if not is_safe_path(path):
         return "  Syntax check blocked: path outside allowed directories"
-    # Quote path to prevent injection
-    safe_path = f"'{path}'"
+    # Quote path to prevent injection - use shlex for proper escaping
+    import shlex
+    safe_path = shlex.quote(path)
     cmd = _SYNTAX_CHECKERS[ext].format(path=safe_path)
     out = execute(cmd, timeout=30)
     if out.strip() in ("", "OK"):
@@ -1044,7 +1049,7 @@ def inline_mode(query):
         if "EXECUTE:" in resp or "WRITE:" in resp:
             r, created = run_commands(resp)
             if r:
-                print(box(r, 93))
+                print(box(r, 97))
                 print()
     else:
         resp = ask([
@@ -1092,7 +1097,7 @@ def main():
             keys = list(BORDER_STYLES)
             idx = (keys.index(_border_style) + 1) % len(keys)
             _border_style = keys[idx]
-            print(f"\n{box(f'Border style: {_border_style}', 93)}\n")
+            print(f"\n{box(f'Border style: {_border_style}', 97)}\n")
             continue
         if u.lower() == "reset":
             msgs = [{"role":"system","content":QUERY_PROMPT}]
@@ -1113,7 +1118,7 @@ def main():
             if "EXECUTE:" in resp or "WRITE:" in resp:
                 r, created = run_commands(resp)
                 if r:
-                    print(box(r, 93))
+                    print(box(r, 97))
                     print()
                     cmd_results = r
             msgs.append({"role": "assistant", "content": resp})
