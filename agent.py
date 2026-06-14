@@ -42,13 +42,77 @@ else:
     ALLOWED_WRITE_DIRS.append("/tmp")
 MAX_FILE_SIZE = 1024 * 1024
 DANGEROUS_CMDS = [
-    "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "> /dev/sda",
-    "> /dev/sdb", "format /dev", "mkfs.", "mkswap", "shutdown",
-    "reboot", "poweroff", "halt", "init 0", "init 6", "chmod 777 /",
-    "chmod 777 /*", "chown ", "passwd", "useradd", "userdel",
-    "usermod", "groupadd", "groupdel",
+    "rm -rf /", "rm -rf /*", "rm -rf ~", "rm -rf .", "mkfs", "dd if=",
+    ":(){", "> /dev/sda", "> /dev/sdb", "format /dev", "mkfs.", "mkswap",
+    "shutdown", "reboot", "poweroff", "halt", "init 0", "init 6",
+    "chmod 777 /", "chmod 777 /*", "chown ", "passwd", "useradd",
+    "userdel", "usermod", "groupadd", "groupdel",
     "format c:", "format c:\\", "del /f /s", "rd /s /q",
     "diskpart", "reg delete", "net user", "sc delete",
+    "curl ", "wget ", "eval ", "exec ", "sudo ", "su -",
+    "chmod 777", "chmod -R 777", "chmod 000", "chown -R",
+    "rm -rf", "rm -r /", "rm -f /", "rmdir /",
+    "> /dev/null", "mv /*", "mv /etc", "mv /usr",
+    "cat /etc/shadow", "cat /etc/passwd",
+    "; rm ", "| rm ", "&& rm ", "|| rm ",
+    "`rm ", "$(rm ", "${", "python -c", "python3 -c",
+    "perl -e", "ruby -e", "node -e", "bash -c",
+    "sh -c", "nc ", "ncat ", "netcat ",
+    "base64 ", "xxd ", "openssl ",
+    "iptables -F", "iptables -X", "iptables -P",
+    "systemctl stop", "systemctl disable",
+    "killall", "kill -9", "pkill",
+    "mkfifo", "mknod",
+    "chattr +i", "chattr -i",
+    "export PATH=", "unset PATH",
+    "source /etc", ". /etc",
+    "cd / &&", "cd /; ",
+]
+
+# Patterns to catch encoded/bypassed dangerous commands
+DANGEROUS_PATTERNS = [
+    r'\brm\s+-[a-z]*r[a-z]*f',  # rm -rf with any flags
+    r'\brm\s+-[a-z]*f[a-z]*r',  # rm -fr
+    r'\bdd\s+if=',              # dd if=
+    r'\bmkfs\b',               # mkfs
+    r'>\s*/dev/sd',            # > /dev/sda, > /dev/sdb
+    r'>\s*/dev/nvme',          # > /dev/nvme
+    r'\bshutdown\b',           # shutdown
+    r'\breboot\b',             # reboot
+    r'\bpoweroff\b',           # poweroff
+    r'\binit\s+[06]',         # init 0 or init 6
+    r'\bchmod\s+777',         # chmod 777
+    r'\bchmod\s+000',         # chmod 000
+    r'\bchown\s+-R',          # chown -R
+    r'\bcurl\b.*\|\s*bash',   # curl | bash
+    r'\bcurl\b.*\|\s*sh',     # curl | sh
+    r'\bwget\b.*\|\s*bash',   # wget | bash
+    r'\bwget\b.*\|\s*sh',     # wget | sh
+    r'\beval\b',              # eval
+    r'\bexec\b',              # exec
+    r'\bsudo\b',              # sudo
+    r'\bsu\s+-',              # su -
+    r';\s*rm\s',              # ; rm
+    r'\|\s*rm\s',             # | rm
+    r'&&\s*rm\s',             # && rm
+    r'\|\|\s*rm\s',           # || rm
+    r'`rm\s',                 # `rm
+    r'\$\(rm\s',              # $(rm
+    r'\bsource\s+/etc',       # source /etc
+    r'\.\s+/etc',             # . /etc
+    r'\bpython\s+-c',         # python -c
+    r'\bpython3\s+-c',        # python3 -c
+    r'\bperl\s+-e',           # perl -e
+    r'\bruby\s+-e',           # ruby -e
+    r'\bnc\s+-',              # nc -
+    r'\bncat\s',              # ncat
+    r'\bnetcat\s',            # netcat
+    r'\bbase64\s+-d',         # base64 -d
+    r'\bexport\s+PATH',       # export PATH=
+    r'\bunset\s+PATH',        # unset PATH
+    r'\bkillall\b',           # killall
+    r'\bpkill\b',             # pkill
+    r'\bchattr\s+[+-]i',     # chattr +/-i
 ]
 
 SYS_PROMPT = """You are a system-level AI assistant with full shell and file access.
@@ -126,44 +190,136 @@ EXECUTE: pip install -r requirements.txt
 
 To run it: python app.py"""
 
-QUERY_PROMPT = """You are a senior technical consultant who gives detailed, insightful answers.
+QUERY_PROMPT = """You are an elite AI assistant with the quality of Claude, Gemini, or GPT-4. You provide exceptional, insightful, and well-researched answers that feel like talking to a world-class expert.
 
-Structure every answer like this:
+LANGUAGE RULES (CRITICAL):
+- ALWAYS respond in English unless the user EXPLICITLY asks for another language (e.g., "in marathi", "hindi मध्ये", "मराठीत").
+- If the question is in English → respond in English.
+- If the question says "in marathi" or similar → respond in that language.
+- Never mix languages in the same response.
+- Default language: English.
 
-Key Steps:
+MARATHI LANGUAGE STYLE (when responding in Marathi):
+- Use natural, fluent, grammatically correct, modern Marathi.
+- Feel professional yet friendly — like a knowledgeable friend explaining something.
+- Use Marathi words and phrases naturally, not forced translations from English.
+- Use correct Marathi grammar: proper verb conjugations, postpositions, gender agreement.
+- Use modern Marathi vocabulary that young professionals would use.
+- Avoid overly formal or outdated Marathi. Keep it conversational and approachable.
+- Use Marathi punctuation and formatting conventions.
+- Example of good Marathi: "Python हा एक उच्च-स्तरीय भाषा आहे जो गाइडो व्हॅन रॉसमनने 1991 साली तयार केला."
+- Example of bad Marathi (forced translation): "Python एक high-level language आहे जी Guido van Rossum ने create केली."
 
- 1 Step Name:
-    - Specific action with real tools and concrete details
-    - Another specific, detailed action
+CORE RULES:
+- Be accurate. If you don't know something or lack real-time data, say so clearly.
+- Never hallucinate or make up facts. If your knowledge is outdated, acknowledge it.
+- For news/current events: Clearly state that your knowledge has a cutoff date and you cannot provide real-time updates. Suggest checking reliable news sources.
+- Start with a direct answer, then expand with details.
+- Use clear structure: headers, numbered lists, bullet points.
+- End with a relevant follow-up or suggestion.
 
- 2 Step Name:
-    - Specific action with real tools and concrete details
-    - Another specific, detailed action
+RESPONSE QUALITY GUIDELINES:
+- Write like a knowledgeable expert, not a textbook.
+- Use analogies and real-world examples to explain complex ideas.
+- Be concise but thorough — depth over length.
+- Use code blocks when explaining technical concepts.
+- Bold key terms for emphasis.
+- Make it scannable — readers should get value in 10 seconds.
+- Add practical context: WHY something matters, not just WHAT it is.
+- For technical topics: include practical examples, common pitfalls, and best practices.
 
-Here is an example of the expected depth and specificity (apply this level of detail to every answer):
+RESPONSE FORMAT:
+1. Direct Answer — 1-2 sentences with a clear, confident answer
+2. Key Concepts — Explain the core ideas with examples
+3. How It Works / Details — Deeper dive with structure
+4. Practical Tips — Actionable advice or real-world use cases
+5. Common Mistakes — What to avoid (if applicable)
+6. Learning Path — Suggest next steps or resources
 
- EXAMPLE for "how to improve database query performance":
+EXAMPLE (excellent quality) for "How does container work in docker?":
 
- Key Steps:
+## Docker Containers — How They Work
 
-  1 Analyze Slow Queries:
-     - Enable `pg_stat_statements` in PostgreSQL or `sys.dm_exec_query_stats` in SQL Server to capture query execution plans, frequency, and total runtime, then sort by total time to find the worst offenders
-     - Use `EXPLAIN ANALYZE` to identify full table scans, missing indexes, or incorrect join orders as root causes
+A Docker container is a **lightweight, standalone, and executable package** that includes everything needed to run a piece of software — code, runtime, libraries, and system tools. Think of it as a **mini virtual machine**, but much faster and more efficient.
 
-  2 Optimize Indexing Strategy:
-     - Add composite indexes for columns used together in WHERE clauses using `CREATE INDEX CONCURRENTLY` to avoid locking production tables, and remove unused indexes identified by `pg_stat_user_indexes` to reduce write overhead
-     - Use covering indexes with INCLUDE columns for frequently accessed queries to avoid expensive key lookups
+### Key Concept: Containers vs VMs
 
-This is a demonstration of the required specificity. Now answer the user's question with this same level of detail.
+| Feature | Container | Virtual Machine |
+|---------|-----------|-----------------|
+| Startup | Milliseconds | Minutes |
+| Size | MBs | GBs |
+| Isolation | Process-level | Full OS |
+| Performance | Near-native | Slower |
 
-Guidelines:
-- Be specific: mention real tools (Docker, pytest, GitHub Actions, GitLab CI, S3, Redis, Kubernetes, Terraform, etc.) and concrete metrics
-- Always explain HOW to implement, not just WHAT to do
-- Separate every step with a blank line
-- Output the final answer only — no thinking out loud, no self-talk, no planning phrases
-- No markdown formatting (no **, *, _)
-- Use backticks `like this` for inline code only
-- End with a relevant follow-up question"""
+### How Containers Work Under the Hood
+
+1. **Images** → Blueprints that define what goes inside the container
+2. **Layers** → Images are built in layers (like stacking透明 sheets)
+3. **Union FS** → Merges these layers into a single view
+4. **Namespaces** → Provide isolation (network, process, filesystem)
+5. **Cgroups** → Limit resource usage (CPU, memory)
+
+### Practical Example
+```bash
+# Run a Python container
+docker run -it python:3.9 python
+
+# This creates a container with:
+# - Ubuntu base
+# - Python 3.9 installed
+# - Isolated from your host system
+```
+
+### Real-World Analogy
+Imagine shipping containers on a cargo ship. Each container is:
+- **Standardized** → Same format, different contents
+- **Isolated** → Contents don't mix
+- **Portable** → Works on any ship, any port
+- **Efficient** → Ships can carry many containers
+
+### Common Pitfalls
+- **Don't store data in containers** → Use volumes instead
+- **Don't run as root** → Use non-root users
+- **Don't use `latest` tag** → Pin versions for reproducibility
+
+### Next Steps
+- Try: `docker run -d -p 80:80 nginx` (run a web server)
+- Learn: Docker Compose for multi-container apps
+- Read: Docker official docs for best practices
+
+Want to learn Python? I can suggest a learning path or resources.
+
+EXAMPLE (Marathi) for "Python काय आहे?":
+
+Python हा एक उच्च-स्तरीय, interpreted भाषा आहे जो गाइडो व्हॅन रॉसमनने 1991 साली तयार केला. याची syntax सोपी आहे आणि code वाचण्यास सोपा असल्यामुळे ही भाषा नवशिक्यांपासून अनुभवी developer पर्यंत सर्वांना आवडते.
+
+मुख्य वैशिष्ट्ये:
+- शिकण्यास आणि वाचण्यास सोपी
+- मोठी standard library उपलब्ध
+- सर्व प्लॅटफॉर्मवर चालते (Windows, macOS, Linux)
+- OOP, functional, प्रोसेसिंग — सर्व पॅराडायम्स समर्थित
+
+उपयोग क्षेत्रे:
+1. वेब विकास (Django, Flask)
+2. डेटा सायन्स (NumPy, pandas, scikit-learn)
+3. मेशिन लर्निंग (TensorFlow, PyTorch)
+4. ऑटोमेशन आणि स्क्रिप्टिंग
+5. डेस्कटॉप अॅप्लिकेशन्स
+
+Python शिकायचे आहे? मी तुम्हाला शिकण्याचा मार्ग सुचवू शकतो.
+
+EXAMPLE (Marathi) for "आजची ताजी बातमी काय आहे?":
+
+माझ्याकडे वास्तविक समयातील बातम्या उपलब्ध नाहीत. माझ्या माहितीचा एक ठराविक कालावधी आहे, त्यामुळे मी नवीनतम बातम्या देऊ शकत नाही.
+
+ताज्या बातम्यांसाठी हे स्रोत तपासा:
+- विश्वसनीय बातमी वेबसाइट्स (BBC, Reuters, AP)
+- तुमच्या मोबाइलवरील बातमी ॲप्स
+- Google News
+
+तुम्हाला कोणत्या विषयाबद्दल माहिती हवी आहे? मी मदत करू शकतो.
+
+Now answer the user's question following this exact format and language rules. Be accurate, well-structured, and honest about your limitations."""
 
 BORDER_STYLES = {
     "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
@@ -209,17 +365,48 @@ def typewrite(text, color=96, delay=0.0003):
         sys.stdout.flush()
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
+def animated_box(text, color=93, delay=0.02):
+    """Display text in a box with typewriter animation"""
+    cols = term_width()
+    inner = cols - 4
+    tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
+    lines = []
+    for raw in text.split('\n'):
+        for wrapped in textwrap.wrap(raw, inner) or ['']:
+            lines.append(wrapped)
+    print(f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m")
+    for line in lines:
+        sys.stdout.write(f"\033[{color}m{v}\033[0m ")
+        sys.stdout.write(line)
+        sys.stdout.write(f"{' ' * (inner - len(line))}\033[{color}m{v}\033[0m\n")
+        sys.stdout.flush()
+        time.sleep(delay)
+    print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
+
 def is_safe_path(path):
-    abs_path = os.path.abspath(os.path.expanduser(path))
-    for allowed in ALLOWED_WRITE_DIRS:
-        if abs_path.startswith(os.path.abspath(allowed)):
-            return True
-    return False
+    try:
+        abs_path = os.path.abspath(os.path.expanduser(path))
+        # Resolve symlinks to prevent symlink attacks
+        real_path = os.path.realpath(abs_path)
+        for allowed in ALLOWED_WRITE_DIRS:
+            allowed_real = os.path.realpath(os.path.abspath(allowed))
+            if real_path.startswith(allowed_real + os.sep) or real_path == allowed_real:
+                return True
+        return False
+    except (OSError, ValueError):
+        return False
 
 def is_dangerous(cmd):
-    cmd_lower = cmd.lower()
+    cmd_lower = cmd.lower().strip()
+    # Remove whitespace variations to prevent bypass
+    cmd_normalized = re.sub(r'\s+', ' ', cmd_lower)
+    # Check substring matches
     for d in DANGEROUS_CMDS:
-        if d in cmd_lower:
+        if d in cmd_normalized:
+            return True
+    # Check regex patterns
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, cmd_normalized):
             return True
     return False
 
@@ -230,7 +417,8 @@ def execute(cmd, timeout=120):
         shell = ["cmd", "/c", cmd] if IS_WINDOWS else ["sh", "-c", cmd]
         r = subprocess.run(
             shell,
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}  # Sanitize env
         )
         out = r.stdout
         if r.stderr: out += "\n" + r.stderr
@@ -241,7 +429,11 @@ def execute(cmd, timeout=120):
     except subprocess.TimeoutExpired:
         return "Command timed out [Exit code: -1]"
     except Exception as e:
-        return f"Error: {e} [Exit code: -2]"
+        err_str = str(e)
+        # Sanitize error messages
+        if "No such file" in err_str:
+            return "Command not found [Exit code: -2]"
+        return f"Error: {err_str} [Exit code: -2]"
 
 def write_file(path, content):
     if not is_safe_path(path):
@@ -251,7 +443,9 @@ def write_file(path, content):
     abs_path = os.path.abspath(os.path.expanduser(path))
     try:
         os.makedirs(os.path.dirname(abs_path) or '.', exist_ok=True)
-        with open(abs_path, 'w') as f:
+        # Write with restrictive permissions (owner read/write only)
+        fd = os.open(abs_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
             f.write(content)
         return f"Created: {os.path.relpath(abs_path, os.getcwd())} ({len(content)} bytes)"
     except Exception as e:
@@ -385,7 +579,11 @@ def ask(messages, max_tokens=None, max_retries=1, models=None, temperature=0.5):
                 time.sleep(0.3)
                 continue
             except Exception as e:
-                return f"API Error: {e}"
+                # Sanitize error to prevent API key leak
+                err_str = str(e)
+                if API_KEY and API_KEY in err_str:
+                    err_str = err_str.replace(API_KEY, "[REDACTED]")
+                return f"API Error: {err_str}"
     return "All models failed"
 
 
@@ -442,7 +640,11 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
                 time.sleep(0.3)
                 continue
             except Exception as e:
-                yield f"Error: {e}"
+                # Sanitize error to prevent API key leak
+                err_str = str(e)
+                if API_KEY and API_KEY in err_str:
+                    err_str = err_str.replace(API_KEY, "[REDACTED]")
+                yield f"Error: {err_str}"
                 return
     yield "All models failed"
 
@@ -515,28 +717,25 @@ def run_commands(text):
             cmd = l[8:].strip()
             for fence in ('```', '`', '~~~', '~'):
                 cmd = cmd.rstrip(fence)
+            # Sanitize command - remove dangerous patterns
             if '<<' in cmd:
-                term = cmd.split('<<')[1].strip().split()[-1]
-                heredoc_lines = []
+                # Block heredoc to prevent injection
+                results.append("  BLOCKED: heredoc not allowed for security")
                 i += 1
-                while i < len(lines):
-                    raw = lines[i]
-                    stripped = _strip_fences(raw).strip()
-                    if stripped.startswith("EXECUTE:") or stripped.startswith("WRITE:"):
-                        break
-                    if stripped == term:
-                        i += 1
-                        break
-                    heredoc_lines.append(raw)
-                    i += 1
-                if heredoc_lines:
-                    cmd += '\n' + '\n'.join(heredoc_lines)
-                i -= 1
-            results.append(f"  $ {cmd}\n{execute(cmd)}")
+                continue
+            if is_dangerous(cmd):
+                results.append(f"  BLOCKED: {cmd[:50]}... is dangerous")
+            else:
+                results.append(f"  $ {cmd}\n{execute(cmd)}")
         elif l.startswith("WRITE:"):
             path = l[6:].strip()
             for fence in ('```', '`', '~~~', '~'):
                 path = path.rstrip(fence)
+            # Validate path before processing
+            if not is_safe_path(path):
+                results.append(f"  BLOCKED: cannot write to {path}")
+                i += 1
+                continue
             content_lines = []
             i += 1
             opened = False
@@ -558,9 +757,9 @@ def run_commands(text):
             if content_lines:
                 content = '\n'.join(content_lines)
                 content = _strip_code_fences(content)
-                abs_path = os.path.abspath(os.path.expanduser(path))
                 result = write_file(path, content)
                 results.append(f"  {result}")
+                abs_path = os.path.abspath(os.path.expanduser(path))
                 if os.path.exists(abs_path):
                     created_files.append(abs_path)
             i -= 1
@@ -612,9 +811,9 @@ _SYNTAX_CHECKERS = {
     ".py": "python3 -m py_compile {path}",
     ".js": "node --check {path}",
     ".ts": "npx tsc --noEmit --lib es6 --strict {path}",
-    ".json": "python3 -c \"import json; json.load(open('{path}'))\"",
-    ".yaml": "python3 -c \"import yaml; yaml.safe_load(open('{path}'))\"",
-    ".yml": "python3 -c \"import yaml; yaml.safe_load(open('{path}'))\"",
+    ".json": "python3 -c \"import json; json.load(open({path}))\"",
+    ".yaml": "python3 -c \"import yaml; yaml.safe_load(open({path}))\"",
+    ".yml": "python3 -c \"import yaml; yaml.safe_load(open({path}))\"",
     ".sh": "bash -n {path}",
 }
 
@@ -622,7 +821,12 @@ def _validate_syntax(path):
     ext = os.path.splitext(path)[1]
     if ext not in _SYNTAX_CHECKERS:
         return ""
-    cmd = _SYNTAX_CHECKERS[ext].format(path=path)
+    # Validate path is safe before using in command
+    if not is_safe_path(path):
+        return "  Syntax check blocked: path outside allowed directories"
+    # Quote path to prevent injection
+    safe_path = f"'{path}'"
+    cmd = _SYNTAX_CHECKERS[ext].format(path=safe_path)
     out = execute(cmd, timeout=30)
     if out.strip() in ("", "OK"):
         return ""
@@ -708,7 +912,8 @@ def _cmd_users():
 
 def _cmd_logins():
     if IS_WINDOWS:
-        return execute("wevtutil qe Security /rd:true /f:text /c:5 /q:\"*[System[EventID=4624]]\" 2>nul || echo 'Event log access not available'")
+        # Use safe command without user input
+        return execute("wevtutil qe Security /rd:true /f:text /c:5 2>nul || echo 'Event log access not available'")
     return execute("last -10 2>/dev/null")
 
 def _cmd_scan():
@@ -820,6 +1025,10 @@ def handle_do(query):
     return ("ai", q)
 
 def inline_mode(query):
+    # Input length validation
+    if len(query) > 10000:
+        print(box("Input too long (max 10000 characters)", 91))
+        return
     if query.lower().startswith("do "):
         action, value = handle_do(query[3:])
         if action != "ai":
@@ -845,7 +1054,7 @@ def inline_mode(query):
         resp = _strip_reasoning(resp)
         if resp:
             print()
-            print(box(resp, 93))
+            animated_box(resp, 93, delay=0.0003)
             print()
         else:
             print(box("No response generated", 91))
@@ -867,6 +1076,10 @@ def main():
             print("\nBye!"); break
 
         if not u: continue
+        # Input length validation to prevent DoS
+        if len(u) > 10000:
+            print(box("Input too long (max 10000 characters)", 91))
+            continue
         if u.lower() in ("quit","exit"): break
         if u.lower() == "clear": print("\033[2J\033[H", end=""); continue
         if u.lower() in ("help","commands"):
@@ -914,7 +1127,7 @@ def main():
             resp = _strip_reasoning(resp)
             if resp:
                 print()
-                print(box(resp, 93))
+                animated_box(resp, 93, delay=0.0003)
                 print()
             if not resp:
                 resp = "No response"
@@ -922,6 +1135,13 @@ def main():
 
         if len(msgs) > 60:
             msgs = [msgs[0]] + msgs[-40:]
+
+        # Sanitize message history to prevent context injection
+        for m in msgs:
+            if m.get("role") == "system":
+                content = m.get("content", "")
+                if len(content) > 50000:
+                    m["content"] = content[:50000] + "\n[Truncated for security]"
 
 if __name__ == "__main__":
     main()
