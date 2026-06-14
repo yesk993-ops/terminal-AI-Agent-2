@@ -129,6 +129,161 @@ class TellAgent:
                 json.dump(cache_data, f, indent=2)
         except Exception:
             pass
+    
+    def _run_commands(self, text: str) -> str:
+        """Parse and execute WRITE: and EXECUTE: directives from AI response.
+        Also auto-detect code blocks and create files from them."""
+        import re
+        import subprocess
+        
+        results = []
+        created_files = []
+        lines = text.split('\n')
+        i = 0
+        has_directives = False
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            if line.startswith('WRITE:'):
+                has_directives = True
+                # Parse file path
+                path = line[6:].strip()
+                path = path.strip('`')
+                
+                # Collect content until next WRITE: or EXECUTE: or end
+                content_lines = []
+                i += 1
+                while i < len(lines):
+                    next_line = lines[i].strip()
+                    if next_line.startswith('WRITE:') or next_line.startswith('EXECUTE:'):
+                        break
+                    if next_line.startswith('```') or next_line == '`':
+                        i += 1
+                        continue
+                    content_lines.append(lines[i])
+                    i += 1
+                
+                if content_lines:
+                    content = '\n'.join(content_lines)
+                    # Write the file
+                    try:
+                        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+                        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        with os.fdopen(fd, 'w') as f:
+                            f.write(content)
+                        results.append(f"Created: {path} ({len(content)} bytes)")
+                        created_files.append(os.path.abspath(path))
+                    except Exception as e:
+                        results.append(f"Error creating {path}: {e}")
+                continue
+            
+            elif line.startswith('EXECUTE:'):
+                has_directives = True
+                cmd = line[8:].strip()
+                cmd = cmd.strip('`')
+                
+                # Skip dangerous commands
+                dangerous = ['rm -rf', 'mkfs', 'dd if=', 'shutdown', 'reboot', '> /dev/']
+                if any(d in cmd.lower() for d in dangerous):
+                    results.append(f"BLOCKED: {cmd[:50]}... is dangerous")
+                else:
+                    try:
+                        r = subprocess.run(
+                            ['sh', '-c', cmd],
+                            capture_output=True, text=True, timeout=120,
+                            env={k: v for k, v in os.environ.items() 
+                                 if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV")}
+                        )
+                        output = r.stdout.strip()
+                        if r.stderr:
+                            output += "\n" + r.stderr.strip() if output else r.stderr.strip()
+                        results.append(f"$ {cmd}\n{output[:2000]}")
+                    except subprocess.TimeoutExpired:
+                        results.append(f"$ {cmd}\nCommand timed out")
+                    except Exception as e:
+                        results.append(f"$ {cmd}\nError: {e}")
+                i += 1
+                continue
+            
+            i += 1
+        
+        # If no WRITE:/EXECUTE: directives found, try to auto-detect code blocks
+        if not has_directives:
+            # Look for filename patterns and code blocks
+            code_blocks = []
+            current_file = None
+            current_code = []
+            in_code_block = False
+            
+            for line in lines:
+                stripped = line.strip()
+                
+                # Detect code block start
+                if stripped.startswith('```'):
+                    if in_code_block and current_file and current_code:
+                        # End of code block - save the file
+                        code_blocks.append((current_file, '\n'.join(current_code)))
+                        current_code = []
+                        current_file = None
+                        in_code_block = False
+                    elif not in_code_block:
+                        # Start of code block - look for filename before this
+                        in_code_block = True
+                        continue
+                
+                # If we're in a code block, collect code
+                if in_code_block:
+                    current_code.append(line)
+                    continue
+                
+                # Detect filename patterns (before code block)
+                if re.match(r'^[\w\-]+\.(py|js|ts|html|css|json|txt|md|yml|yaml|sh)$', stripped):
+                    current_file = stripped
+                    current_code = []
+            
+            # Handle any remaining code block
+            if in_code_block and current_file and current_code:
+                code_blocks.append((current_file, '\n'.join(current_code)))
+            
+            # Create files from detected code blocks
+            for filename, code in code_blocks:
+                if code.strip():
+                    try:
+                        # Clean up the code - remove leading/trailing empty lines
+                        code = code.strip()
+                        os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+                        fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        with os.fdopen(fd, 'w') as f:
+                            f.write(code)
+                        results.append(f"Created: {filename} ({len(code)} bytes)")
+                        created_files.append(os.path.abspath(filename))
+                    except Exception as e:
+                        results.append(f"Error creating {filename}: {e}")
+        
+        # Auto-install dependencies if requirements.txt or package.json was created
+        for f in created_files:
+            basename = os.path.basename(f)
+            if basename == 'requirements.txt':
+                try:
+                    r = subprocess.run(
+                        ['pip', 'install', '-r', 'requirements.txt'],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    results.append(f"$ pip install -r requirements.txt\n{r.stdout[:500]}")
+                except Exception as e:
+                    results.append(f"Error installing deps: {e}")
+            elif basename == 'package.json':
+                try:
+                    r = subprocess.run(
+                        ['npm', 'install'],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    results.append(f"$ npm install\n{r.stdout[:500]}")
+                except Exception as e:
+                    results.append(f"Error installing deps: {e}")
+        
+        return '\n'.join(results) if results else ''
         
     def get_help(self) -> str:
         commands = sorted(list(self.commands.get_command_map().keys()))
@@ -267,12 +422,69 @@ RESPONSE STRUCTURE:
                 result = self.commands.execute(task)
                 
                 if result and "ai" in result:
-                    self.add_message("user", task)
-                    response = self.api.generate_response(self.get_messages())
-                    self.add_message("assistant", response)
+                    # Use coding-specific system prompt for "do" tasks
+                    coding_prompt = [{"role": "system", "content": """You are a coding agent. ALWAYS use these directives:
+
+WRITE: filename
+<file content here — complete, working code, NO markdown, NO code blocks>
+
+EXECUTE: shell command
+
+CRITICAL RULES:
+1. ALWAYS start with WRITE: followed by the filename
+2. Then put the COMPLETE file content (no placeholders, no TODOs)
+3. Use EXECUTE: to install deps and run the project
+4. Create ALL files needed for the project
+5. NEVER use markdown, **, ##, ```, or any formatting
+
+EXAMPLE for "create a calculator app":
+WRITE: calc.py
+def add(a, b): return a + b
+def subtract(a, b): return a - b
+def multiply(a, b): return a * b
+def divide(a, b):
+    if b == 0: raise ValueError("Cannot divide by zero")
+    return a / b
+print("Calculator ready. Functions: add, subtract, multiply, divide")
+EXECUTE: python calc.py
+
+EXAMPLE for "create a flask web app":
+WRITE: app.py
+from flask import Flask
+app = Flask(__name__)
+@app.route('/')
+def home(): return 'Hello World!'
+if __name__ == '__main__': app.run(debug=True)
+WRITE: requirements.txt
+flask==3.0.0
+EXECUTE: pip install -r requirements.txt
+EXECUTE: python app.py
+
+YOU ARE A CODING AGENT — BUILD COMPLETE PROJECTS:
+- Create ALL files (source, config, tests, README)
+- Install dependencies
+- Run and test the code
+- Give specific instructions on how to use it
+
+SYSTEM TASKS:
+- Detect OS and use appropriate commands
+- Install packages using right package manager
+- Show actual command output
+- NEVER run destructive commands"""}]
+                    messages = coding_prompt + [{"role": "user", "content": task}]
+                    response = self.api.generate_response(messages)
                     
-                    self.ui.display_box(response)
-                    print()
+                    # Parse and execute WRITE: and EXECUTE: directives
+                    results = self._run_commands(response)
+                    if results:
+                        self.ui.display_box(results)
+                        print()
+                    else:
+                        self.ui.display_box(response)
+                        print()
+                    
+                    self.add_message("user", task)
+                    self.add_message("assistant", response)
                 else:
                     action, value = result
                     self.ui.display_box(value)

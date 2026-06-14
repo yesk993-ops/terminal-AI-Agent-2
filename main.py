@@ -89,10 +89,21 @@ def main():
                 return
                 
             agent.add_message("user", task)
-            response = agent.api.generate_response(agent.get_messages())
+            # Use coding-specific system prompt
+            coding_prompt = [{"role": "system", "content": "You are a coding agent. ALWAYS use these directives:\n\nWRITE: filename\n<file content here>\n\nEXECUTE: command\n\nCRITICAL: Start with WRITE: then filename. Then code. Then EXECUTE:.\nDo NOT use markdown or code blocks."}]
+            messages = coding_prompt + [{"role": "user", "content": task}]
+            response = agent.api.generate_response(messages)
+            
+            # Parse and execute WRITE: and EXECUTE: directives
+            results = agent._run_commands(response)
+            if results:
+                animated_ui.animate_box(results)
+                print()
+            else:
+                animated_ui.animate_box(response)
+                print()
+            
             agent.add_message("assistant", response)
-            animated_ui.animate_box(response)
-            print()
             
         elif query in ("history", "hist", "help", "commands", "border", "reset", "clear"):
             if query == "help" or query == "commands":
