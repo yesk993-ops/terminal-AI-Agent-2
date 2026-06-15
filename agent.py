@@ -115,7 +115,7 @@ DANGEROUS_PATTERNS = [
     r'\bchattr\s+[+-]i',     # chattr +/-i
 ]
 
-SYS_PROMPT = """You are an expert coding assistant — a real-time coding agent like Cursor or Codex. You build complete projects, write production code, and follow instructions precisely.
+SYS_PROMPT = """You are an expert coding agent — a real-time coding agent like Cursor or Codex. You build complete projects, write production code, and follow instructions precisely.
 
 FORMATTING RULES:
 - NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
@@ -137,37 +137,56 @@ WRITE: requirements.txt
 EXECUTE: pip install -r requirements.txt
 EXECUTE: python app.py
 
-YOU ARE A CODING AGENT — YOUR JOB:
-1. Build complete, working projects from user instructions
-2. Create ALL necessary files (source, config, tests, README)
-3. Install dependencies and run the project
-4. Fix bugs and errors when they occur
-5. Follow user instructions precisely — do exactly what they ask
+CODE QUALITY STANDARDS (MUST FOLLOW):
+
+1. CODE STRUCTURE:
+- Organize code into clear, readable, maintainable structure
+- Use proper functions, classes, and modules
+- Follow single responsibility principle
+- Separate concerns (UI, logic, data)
+
+2. CODE STYLE:
+- Follow PEP 8 (Python), ESLint (JS), or language-specific conventions
+- Consistent indentation (4 spaces for Python, 2 for JS)
+- Meaningful naming: variables, functions, classes
+- Proper docstrings and comments
+
+3. CODE QUALITY:
+- Write efficient, scalable, optimized code
+- Handle edge cases and errors
+- Use type hints where appropriate
+- Avoid code duplication (DRY principle)
+
+4. CODE ACCURACY:
+- Write correct, working code — test mentally before outputting
+- Include error handling
+- Validate inputs
+- Handle exceptions gracefully
+
+5. CODE READABILITY:
+- Clear, descriptive variable names
+- Meaningful function names that describe what they do
+- Comments for complex logic
+- Consistent formatting
+
+6. CODE MAINTAINABILITY:
+- Easy to modify and extend
+- Loose coupling between components
+- High cohesion within modules
+- Document assumptions and dependencies
+
+7. CODE GENERATION:
+- Generate code similar in quality to a human expert
+- Adapt to changing requirements
+- Integrate with existing code when specified
 
 PROJECT CREATION WORKFLOW:
-1. Understand the requirement (ask clarifying questions if needed)
+1. Understand the requirement
 2. Plan the project structure
 3. Create all files with complete, working code
 4. Install dependencies
 5. Run and test the project
 6. Show the user how to use it
-
-CODE QUALITY RULES:
-- Write COMPLETE, WORKING code — no placeholders, no TODOs, no "rest of code here"
-- Include proper error handling
-- Add type hints where appropriate
-- Follow language best practices
-- Use meaningful variable and function names
-- Include comments for complex logic
-- Handle edge cases
-
-FRAMEWORKS AND TOOLS:
-- Python: Flask, Django, FastAPI, asyncio, requests, sqlite3
-- JavaScript: Node.js, Express, React, Next.js
-- HTML/CSS: Responsive design, Tailwind, Bootstrap
-- Databases: SQLite, PostgreSQL, MongoDB
-- DevOps: Docker, docker-compose, shell scripts
-- Testing: pytest, unittest, jest
 
 MULTI-FILE PROJECTS:
 When creating a project, ALWAYS create:
@@ -177,44 +196,25 @@ When creating a project, ALWAYS create:
 - .gitignore
 - Test files if applicable
 
-ERROR HANDLING:
-- If a command fails, read the error and fix it
-- Common fixes: install missing packages, fix syntax errors, check paths
-- Always verify the fix works before moving on
+FRAMEWORKS AND TOOLS:
+- Python: Flask, Django, FastAPI, asyncio, requests, sqlite3
+- JavaScript: Node.js, Express, React, Next.js
+- HTML/CSS: Responsive design, Tailwind, Bootstrap
+- Databases: SQLite, PostgreSQL, MongoDB
+- DevOps: Docker, docker-compose, shell scripts
+- Testing: pytest, unittest, jest
 
 SYSTEM TASKS:
 - Detect OS (Linux/Mac/Windows) and use appropriate commands
 - Install packages using the right package manager
 - Run projects and show output
-- Monitor processes and resources
 - NEVER run destructive commands
 
-RESPONSE STRUCTURE:
-1. Brief intro (1 sentence)
-2. Project structure (list of files)
-3. Code for each file (use WRITE:)
-4. Setup commands (use EXECUTE:)
-5. How to run it
-6. What it does
-
-EXAMPLE for "create a flask todo app":
-Response:
-I'll create a complete Flask todo app with SQLite database.
-
-WRITE: app.py
-from flask import Flask, render_template, request, redirect
-...
-WRITE: requirements.txt
-flask==3.0.0
-...
-WRITE: templates/index.html
-<!DOCTYPE html>
-...
-EXECUTE: pip install -r requirements.txt
-EXECUTE: python app.py
-
-Your todo app is running at http://localhost:5000
-Features: Add, delete, mark complete todos with SQLite storage"""
+OUTPUT:
+- Complete, production-ready code
+- All files needed to run the project
+- Clear setup instructions
+- Working example with actual output"""
 
 QUERY_PROMPT = """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers.
 
@@ -424,49 +424,53 @@ def write_file(path, content):
 def _clean(text):
     if not text:
         return text
-    # Preserve WRITE: and EXECUTE: directives - extract them first
+
     lines = text.split('\n')
-    cleaned_lines = []
+
+    # For coding responses: extract ONLY directive blocks, strip narrative
+    directive_blocks = []
+    current_block = []
     in_directive = False
-    directive_content = []
-    
+
     for line in lines:
         stripped = line.strip()
+        # Remove <code> and </code> tags
+        stripped = re.sub(r'</?code>', '', stripped).strip()
+
         if stripped.startswith('WRITE:') or stripped.startswith('EXECUTE:'):
-            if in_directive and directive_content:
-                cleaned_lines.extend(directive_content)
-                directive_content = []
+            if in_directive and current_block:
+                directive_blocks.append('\n'.join(current_block))
             in_directive = True
-            directive_content.append(line)
+            current_block = [line]
         elif in_directive:
-            if stripped.startswith('```') or stripped == '`':
-                continue  # Skip code fences
-            directive_content.append(line)
-        else:
-            cleaned_lines.append(line)
-    
-    if directive_content:
-        cleaned_lines.extend(directive_content)
-    
-    text = '\n'.join(cleaned_lines)
-    
-    # Remove markdown bold **text**
+            # Skip code fences and empty lines at start
+            if stripped in ('```', '~~~', '`') or stripped.startswith('```'):
+                continue
+            # Stop at next directive
+            if stripped.startswith('WRITE:') or stripped.startswith('EXECUTE:'):
+                if current_block:
+                    directive_blocks.append('\n'.join(current_block))
+                current_block = [line]
+                continue
+            current_block.append(line)
+
+    if in_directive and current_block:
+        directive_blocks.append('\n'.join(current_block))
+
+    # If we found directives, return only directive blocks
+    if directive_blocks:
+        return '\n'.join(directive_blocks)
+
+    # Fallback for non-coding responses: clean markdown
+    text = '\n'.join(lines)
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    # Remove markdown italic *text*
     text = re.sub(r'\*(.*?)\*', r'\1', text)
-    # Remove markdown headers ## Header
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Remove horizontal rules ---
     text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
-    # Remove markdown links [text](url)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    # Remove blockquotes > text
     text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
-    # Remove table pipes |text|
     text = re.sub(r'\|', ' ', text)
-    # Clean up multiple spaces
     text = re.sub(r'  +', ' ', text)
-    # Clean up multiple newlines
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
@@ -647,7 +651,7 @@ def ask_stream(messages, max_tokens=None, max_retries=2):
                                 delta = choices[0].get('delta', {})
                                 content = delta.get('content', '')
                                 if content:
-                                    yield _clean(content)
+                                    yield content
                         except json.JSONDecodeError:
                             pass
                 return
@@ -728,6 +732,8 @@ def run_commands(text):
     while i < len(lines):
         raw = lines[i]
         l = _strip_fences(raw).strip()
+        # Remove <code> tags
+        l = re.sub(r'</?code>', '', l).strip()
         if l.startswith("EXECUTE:"):
             cmd = l[8:].strip()
             for fence in ('```', '`', '~~~', '~'):
@@ -746,12 +752,21 @@ def run_commands(text):
             path = l[6:].strip()
             for fence in ('```', '`', '~~~', '~'):
                 path = path.rstrip(fence)
+            # Remove <code> tags from path
+            path = re.sub(r'</?code>', '', path).strip()
+            # Skip paths without file extensions (likely directory names)
+            # Also skip paths ending with / (directories)
+            basename = os.path.basename(path.rstrip('/'))
+            if '.' not in basename or path.endswith('/'):
+                i += 1
+                continue
             # Validate path before processing
             if not is_safe_path(path):
                 results.append(f"  BLOCKED: cannot write to {path}")
                 i += 1
                 continue
             content_lines = []
+            seen_lines = set()
             i += 1
             opened = False
             while i < len(lines):
@@ -765,8 +780,16 @@ def run_commands(text):
                         i += 1
                         break
                 stripped = _strip_fences(lines[i]).strip()
+                # Remove <code> tags
+                stripped = re.sub(r'</?code>', '', stripped).strip()
                 if stripped.startswith("EXECUTE:") or stripped.startswith("WRITE:"):
                     break
+                # Deduplicate lines to prevent infinite loops
+                if stripped and stripped in seen_lines:
+                    i += 1
+                    continue
+                if stripped:
+                    seen_lines.add(stripped)
                 content_lines.append(lines[i])
                 i += 1
             if content_lines:
