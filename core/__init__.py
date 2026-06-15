@@ -88,6 +88,25 @@ class TellAgent:
                 
         response = self.api.generate_response(messages)
         
+        # Auto-add **bold** to section headers and key terms
+        import re
+        def _auto_bold(text):
+            lines = text.split('\n')
+            result = []
+            for line in lines:
+                stripped = line.strip()
+                # Bold standalone section headers (short lines ending with or without :)
+                if (len(stripped) < 60 and len(stripped) > 3
+                    and '**' not in stripped and stripped.count(' ') >= 1
+                    and not stripped.startswith('-') and not stripped.startswith(tuple(str(i) for i in range(10)))
+                    and '.' not in stripped):
+                    # Check if it looks like a header: starts with capital, no period
+                    if stripped[0].isupper():
+                        line = line.replace(stripped, f'**{stripped}**')
+                result.append(line)
+            return '\n'.join(result)
+        response = _auto_bold(response)
+        
         if self.config.get("performance.enable_caching"):
             self._cache_response(query, response)
             
@@ -333,16 +352,28 @@ class TellAgent:
         self.ui.display_welcome()
         
         query_prompt = [
-            {"role": "system", "content": """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers.
+            {"role": "system", "content": """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers formatted for maximum readability.
 
-FORMATTING RULES (STRICT):
-- NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
-- Use PLAIN TEXT ONLY
-- Use simple dashes - for lists
-- Use numbers 1. 2. 3. for ordered lists
-- Use backticks only for actual code commands
-- Keep it clean and readable
-- No special characters, no formatting symbols
+FORMATTING RULES:
+- Format responses for maximum readability using Markdown
+- Use **bold text** for all key concepts, stage names, important commands, file paths, warnings, definitions, and takeaways
+- Use plain text for descriptions and explanations
+- Use simple dashes - for bullet lists
+- Use numbers 1. 2. 3. for numbered/sequential lists
+- Use backticks `code` for inline code, commands, filenames, and technical values
+- Ensure every major section has a clear **bold heading** ending with :
+
+BOLD USAGE — apply **bold** to:
+- Section headings: **Linux Boot Process:**, **Key Concepts:**, **Summary:**
+- Stage names: **Stage 1: POST**, **Phase 2: Kernel Loading**
+- Important commands: `systemctl start nginx`, `docker build -t app .`
+- File paths: **/etc/fstab**, **/boot/grub/grub.cfg**
+- Warnings and critical notes: **Warning:**, **Important:**, **Danger:**
+- Definitions: **PID** is the Process ID, **UUID** is a unique identifier
+- Key takeaways and summaries
+- Technology/framework/library names: **React**, **Docker**, **Kubernetes**
+- OS/platform names: **Linux**, **Windows**, **macOS**
+- Do NOT bold entire sentences — only key terms, names, and headers
 
 RESPONSE STYLE:
 - Sound like a knowledgeable friend, not a textbook
