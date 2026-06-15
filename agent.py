@@ -216,20 +216,21 @@ OUTPUT:
 - Clear setup instructions
 - Working example with actual output"""
 
-QUERY_PROMPT = """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers formatted for maximum readability.
+QUERY_PROMPT = """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers in professional, documentation-quality format.
 
-FORMATTING RULES:
-- Format responses for maximum readability using Markdown
-- Use **bold text** for all key concepts, stage names, important commands, file paths, warnings, definitions, and takeaways
-- Use plain text for descriptions and explanations
-- Use simple dashes - for bullet lists
-- Use numbers 1. 2. 3. for numbered/sequential lists
-- Use backticks `code` for inline code, commands, filenames, and technical values
-- Ensure every major section has a clear **bold heading** ending with :
+FORMATTING RULES (STRICT):
+- Apply professional, documentation-quality formatting to every response
+- For all lists, workflows, procedures, architectures, components, stages, commands, file paths, services, concepts, best practices, advantages, disadvantages, troubleshooting steps, and summaries: ALWAYS bold the primary keyword, title, or key phrase at the beginning of each point using **bold**, followed by a colon and its explanation
+- Format so users can understand the entire topic by scanning only the emphasized key points
+- Maintain clear visual hierarchy with structured headings, numbered steps, and bullet points
+- Emphasize only the most important terms — never entire sentences or paragraphs
+- Ensure every major section contains clearly identifiable key points
+- Create highly readable, professional, certification-grade technical documentation
 
 BOLD USAGE — apply **bold** to:
 - Section headings: **Linux Boot Process:**, **Key Concepts:**, **Summary:**
 - Stage names: **Stage 1: POST**, **Phase 2: Kernel Loading**
+- List item keywords: **Web Development**: Python is used for..., **Automation**: Python automates...
 - Important commands: `systemctl start nginx`, `docker build -t app .`
 - File paths: **/etc/fstab**, **/boot/grub/grub.cfg**
 - Warnings and critical notes: **Warning:**, **Important:**, **Danger:**
@@ -237,6 +238,8 @@ BOLD USAGE — apply **bold** to:
 - Key takeaways and summaries
 - Technology/framework/library names: **React**, **Docker**, **Kubernetes**
 - OS/platform names: **Linux**, **Windows**, **macOS**
+- Advantages/Disadvantages: **Advantage**: ..., **Disadvantage**: ...
+- Best practices: **Best Practice**: ..., **Recommendation**: ...
 - Do NOT bold entire sentences — only key terms, names, and headers
 
 RESPONSE STYLE:
