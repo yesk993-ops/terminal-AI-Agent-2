@@ -487,7 +487,9 @@ def _clean(text):
     text = '\n'.join(lines)
     # DO NOT strip **bold** markers — they will be rendered by the display function
     # text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # PRESERVE BOLD
-    text = re.sub(r'\*(.*?)\*', r'\1', text)  # strip single * italic only
+    # Strip single * italic ONLY when not part of ** bold
+    # Use negative lookbehind/lookahead to avoid matching **
+    text = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'\1', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
