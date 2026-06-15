@@ -217,8 +217,7 @@ class NVIDIAAgent:
 
         # Fallback for non-coding responses: clean markdown
         text = '\n'.join(lines)
-        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.*?)\*', r'\1', text)
+        text = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'\1', text)
         text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
         text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
         text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
