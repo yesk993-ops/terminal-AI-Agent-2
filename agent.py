@@ -315,7 +315,7 @@ if _border_style not in BORDER_STYLES:
 def term_width():
     return min(shutil.get_terminal_size().columns, 240)
 
-def box(text, color=97):
+def box(text, color=96):
     import re as _re
     cols = term_width()
     inner = cols - 4
@@ -323,13 +323,13 @@ def box(text, color=97):
     lines = []
     for raw in text.split('\n'):
         for wrapped in textwrap.wrap(raw, inner) or ['']:
-            # Render **bold** markers as ANSI bold
-            rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', wrapped)
+            # Render **bold** markers as bold cyan
+            rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', wrapped)
             visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', wrapped))
             padding = inner - visible_len
             if padding < 0:
                 padding = 0
-            lines.append(f"\033[{color}m{v}\033[0m {rendered}{' ' * padding}\033[{color}m{v}\033[0m")
+            lines.append(f"\033[{color}m{v}\033[97m {rendered}{' ' * padding}\033[{color}m{v}\033[0m")
     top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
     bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
     return top + '\n' + '\n'.join(lines) + '\n' + bot
@@ -353,8 +353,8 @@ def typewrite(text, color=96, delay=0.0003):
         sys.stdout.flush()
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
-def animated_box(text, color=97, delay=0.02):
-    """Display text in a box with typewriter animation, rendering **bold** as ANSI bold"""
+def animated_box(text, color=96, delay=0.02):
+    """Display text in a box with typewriter animation, rendering **bold** as bold cyan"""
     import re as _re
     cols = term_width()
     inner = cols - 4
@@ -363,11 +363,12 @@ def animated_box(text, color=97, delay=0.02):
     for raw in text.split('\n'):
         for wrapped in textwrap.wrap(raw, inner) or ['']:
             lines.append(wrapped)
-    print(f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m")
+    border_color = f"1;{color}"
+    print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
     for line in lines:
-        sys.stdout.write(f"\033[{color}m{v}\033[0m ")
-        # Render **bold** markers as ANSI bold
-        rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', line)
+        sys.stdout.write(f"\033[{color}m{v}\033[97m ")
+        # Render **bold** markers as bold cyan
+        rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', line)
         # Calculate visible length (without ANSI codes)
         visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', line))
         padding = inner - visible_len

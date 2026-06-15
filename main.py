@@ -40,7 +40,7 @@ class AnimatedUI:
     def _render_bold(self, text: str) -> str:
         import re
         def replace_bold(match):
-            return f"\033[1m{match.group(1)}\033[0m"
+            return f"\033[1;96m{match.group(1)}\033[0m\033[97m"
         return re.sub(r'\*\*(.+?)\*\*', replace_bold, text)
 
     def _visible_len(self, text: str) -> int:
@@ -52,27 +52,41 @@ class AnimatedUI:
         pad = max(0, width - visible)
         return text + ' ' * pad
 
-    def animate_box(self, text: str, color: int = 97, delay: float = 0.05) -> None:
+    def animate_box(self, text: str, color: int = 96, delay: float = 0.005) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.border_styles[self.current_style]
         
         lines = []
         for raw in text.split('\n'):
-            rendered = self._render_bold(raw)
-            for wrapped in self._wrap_text(rendered, inner) or ['']:
-                padded = self._pad_ansi(wrapped, inner)
-                lines.append(f"\033[{color}m{v} {padded}{v}\033[0m")
+            for wrapped_raw in self._wrap_text(raw, inner) or ['']:
+                rendered = self._render_bold(wrapped_raw)
+                lines.append(rendered)
         
-        top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
-        bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
-        
-        print(top)
-        for i, line in enumerate(lines):
-            print(line)
-            if delay > 0 and i < len(lines) - 1:
+        border_color = f"1;{color}"
+        print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
+        for line in lines:
+            sys.stdout.write(f"\033[{color}m{v}\033[97m ")
+            visible_len = self._visible_len(line)
+            padding = inner - visible_len
+            if padding < 0:
+                padding = 0
+            # Split into ANSI segments and visible text for smooth animation
+            import re as _re
+            segments = _re.split(r'(\033\[[0-9;]*m)', line)
+            for seg in segments:
+                if _re.match(r'\033\[', seg):
+                    sys.stdout.write(seg)
+                else:
+                    for ch in seg:
+                        sys.stdout.write(ch)
+                        sys.stdout.flush()
+                        if delay > 0:
+                            time.sleep(delay * 0.3)
+            sys.stdout.write(f"{' ' * padding}\033[{color}m{v}\033[0m\n")
+            if delay > 0:
                 time.sleep(delay)
-        print(bot)
+        print(f"\033[{border_color}m{bl}{h*(cols-2)}{br}\033[0m")
         
     def _wrap_text(self, text: str, width: int) -> list:
         import textwrap
