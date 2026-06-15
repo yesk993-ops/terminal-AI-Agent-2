@@ -218,14 +218,21 @@ OUTPUT:
 
 QUERY_PROMPT = """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers.
 
-FORMATTING RULES (STRICT):
-- NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
-- Use PLAIN TEXT ONLY
+FORMATTING RULES:
+- Use **bold** for key terms, section headers, and important concepts
+- Use PLAIN TEXT for everything else
 - Use simple dashes - for lists
 - Use numbers 1. 2. 3. for ordered lists
-- Use backticks only for actual code commands
+- Use backticks for actual code commands and filenames
 - Keep it clean and readable
-- No special characters, no formatting symbols
+
+BOLD USAGE:
+- Bold section headers: **Linux Boot Process:**
+- Bold key terms: **BIOS**, **GRUB**, **kernel**
+- Bold important concepts: **Power-On Self-Test (POST)**
+- Bold file paths: **/boot/grub/grub.cfg**
+- Bold command names: **mount**, **umount**
+- Do NOT bold entire sentences — only key terms and headers
 
 RESPONSE STYLE:
 - Sound like a knowledgeable friend, not a textbook
@@ -262,28 +269,28 @@ RESPONSE STRUCTURE:
 
 EXAMPLE for "What is Python?":
 
-Python is a high-level programming language created by Guido van Rossum in 1991. Think of it as the Swiss Army knife of programming — versatile, beginner-friendly, and used everywhere from web apps to AI research.
+**Python** is a high-level programming language created by Guido van Rossum in 1991. Think of it as the Swiss Army knife of programming — versatile, beginner-friendly, and used everywhere from web apps to AI research.
 
-Why Python stands out:
+**Why Python stands out:**
 - Easy to read and write — the code looks almost like English
-- Huge ecosystem — over 400,000 packages on PyPI for every possible task
-- Cross-platform — runs on Windows, Mac, and Linux without changes
+- Huge ecosystem — over 400,000 packages on **PyPI** for every possible task
+- Cross-platform — runs on **Windows**, **Mac**, and **Linux** without changes
 
-Where Python shines:
-- Web development (Django, Flask power sites like Instagram and Spotify)
-- Data science and AI (NumPy, pandas, TensorFlow are industry standards)
+**Where Python shines:**
+- Web development (**Django**, **Flask** power sites like **Instagram** and **Spotify**)
+- Data science and AI (**NumPy**, **pandas**, **TensorFlow** are industry standards)
 - Automation (scripting, scraping, task automation)
 - Education (the most popular language for teaching programming)
 
-Common pitfalls:
-- Speed — Python is slower than C++ or Java, so avoid it for real-time games
-- Mobile apps — not ideal for iOS/Android development
+**Common pitfalls:**
+- Speed — Python is slower than **C++** or **Java**, so avoid it for real-time games
+- Mobile apps — not ideal for **iOS**/**Android** development
 - Indentation matters — spaces vs tabs can cause errors
 
-What to learn next:
-- Start with Python.org's official tutorial
+**What to learn next:**
+- Start with **Python.org**'s official tutorial
 - Try building a simple web scraper or calculator
-- Explore frameworks like FastAPI for web development
+- Explore frameworks like **FastAPI** for web development
 
 Want me to dive deeper into any specific Python topic?"""
 
@@ -301,13 +308,20 @@ def term_width():
     return min(shutil.get_terminal_size().columns, 240)
 
 def box(text, color=97):
+    import re as _re
     cols = term_width()
     inner = cols - 4
     tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
     lines = []
     for raw in text.split('\n'):
         for wrapped in textwrap.wrap(raw, inner) or ['']:
-            lines.append(f"\033[{color}m{v} {wrapped:<{inner}}{v}\033[0m")
+            # Render **bold** markers as ANSI bold
+            rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', wrapped)
+            visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', wrapped))
+            padding = inner - visible_len
+            if padding < 0:
+                padding = 0
+            lines.append(f"\033[{color}m{v}\033[0m {rendered}{' ' * padding}\033[{color}m{v}\033[0m")
     top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
     bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
     return top + '\n' + '\n'.join(lines) + '\n' + bot
@@ -332,7 +346,8 @@ def typewrite(text, color=96, delay=0.0003):
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
 def animated_box(text, color=97, delay=0.02):
-    """Display text in a box with typewriter animation"""
+    """Display text in a box with typewriter animation, rendering **bold** as ANSI bold"""
+    import re as _re
     cols = term_width()
     inner = cols - 4
     tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
@@ -343,8 +358,15 @@ def animated_box(text, color=97, delay=0.02):
     print(f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m")
     for line in lines:
         sys.stdout.write(f"\033[{color}m{v}\033[0m ")
-        sys.stdout.write(line)
-        sys.stdout.write(f"{' ' * (inner - len(line))}\033[{color}m{v}\033[0m\n")
+        # Render **bold** markers as ANSI bold
+        rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', line)
+        # Calculate visible length (without ANSI codes)
+        visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', line))
+        padding = inner - visible_len
+        if padding < 0:
+            padding = 0
+        sys.stdout.write(rendered)
+        sys.stdout.write(f"{' ' * padding}\033[{color}m{v}\033[0m\n")
         sys.stdout.flush()
         time.sleep(delay)
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
@@ -461,10 +483,11 @@ def _clean(text):
     if directive_blocks:
         return '\n'.join(directive_blocks)
 
-    # Fallback for non-coding responses: clean markdown
+    # Fallback for non-coding responses: preserve **bold** but clean other markdown
     text = '\n'.join(lines)
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # DO NOT strip **bold** markers — they will be rendered by the display function
+    # text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # PRESERVE BOLD
+    text = re.sub(r'\*(.*?)\*', r'\1', text)  # strip single * italic only
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
@@ -472,7 +495,25 @@ def _clean(text):
     text = re.sub(r'\|', ' ', text)
     text = re.sub(r'  +', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
+    # Auto-add **bold** to section headers and key terms if not already bolded
+    text = _auto_bold(text)
     return text.strip()
+
+def _auto_bold(text):
+    """Automatically add **bold** to section headers and key terms"""
+    lines = text.split('\n')
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        # Bold section headers (lines ending with : that are short and not in lists)
+        if (stripped.endswith(':') and len(stripped) < 80
+            and not stripped.startswith('-') and not stripped.startswith(tuple(str(i) for i in range(10)))
+            and '**' not in stripped and stripped.count(' ') >= 1):
+            # Check if it looks like a header (starts with capital, no period)
+            if stripped[0].isupper() and '.' not in stripped:
+                line = line.replace(stripped, f'**{stripped}**')
+        result.append(line)
+    return '\n'.join(result)
 
 def _strip_reasoning(text):
     lower = text.lower()
