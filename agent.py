@@ -727,8 +727,17 @@ def _strip_fences(l):
 def run_commands(text):
     results = []
     created_files = []
+    step_num = 0
     lines = text.split('\n')
     i = 0
+
+    def add_step(msg):
+        nonlocal step_num
+        step_num += 1
+        results.append(f"\n  Step {step_num}: {msg}")
+
+    add_step("Parsing response for directives")
+
     while i < len(lines):
         raw = lines[i]
         l = _strip_fences(raw).strip()
@@ -738,15 +747,32 @@ def run_commands(text):
             cmd = l[8:].strip()
             for fence in ('```', '`', '~~~', '~'):
                 cmd = cmd.rstrip(fence)
+            # Fix port conflicts: if http.server uses 8000 and it's busy, use 8080
+            if 'http.server' in cmd and ('8000' in cmd or '-m http.server' in cmd):
+                import socket
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                try:
+                    s.bind(('', 8000))
+                    s.close()
+                except OSError:
+                    cmd = cmd.replace('8000', '8080')
+                    cmd = cmd.replace('-m http.server', '-m http.server --bind 0.0.0.0 -p 8080') if '-m http.server' in cmd and '-p' not in cmd else cmd
+                    if cmd == l[8:].strip():
+                        cmd = "python3 -m http.server 8080"
+                finally:
+                    try:
+                        s.close()
+                    except:
+                        pass
             # Sanitize command - remove dangerous patterns
             if '<<' in cmd:
-                # Block heredoc to prevent injection
-                results.append("  BLOCKED: heredoc not allowed for security")
+                add_step(f"BLOCKED: heredoc not allowed for security")
                 i += 1
                 continue
             if is_dangerous(cmd):
-                results.append(f"  BLOCKED: {cmd[:50]}... is dangerous")
+                add_step(f"BLOCKED: {cmd[:50]}... is dangerous")
             else:
+                add_step(f"Running: {cmd}")
                 results.append(f"  $ {cmd}\n{execute(cmd)}")
         elif l.startswith("WRITE:"):
             path = l[6:].strip()
@@ -762,7 +788,7 @@ def run_commands(text):
                 continue
             # Validate path before processing
             if not is_safe_path(path):
-                results.append(f"  BLOCKED: cannot write to {path}")
+                add_step(f"BLOCKED: cannot write to {path}")
                 i += 1
                 continue
             content_lines = []
@@ -795,6 +821,7 @@ def run_commands(text):
             if content_lines:
                 content = '\n'.join(content_lines)
                 content = _strip_code_fences(content)
+                add_step(f"Creating file: {path} ({len(content)} bytes)")
                 result = write_file(path, content)
                 results.append(f"  {result}")
                 abs_path = os.path.abspath(os.path.expanduser(path))
@@ -802,6 +829,8 @@ def run_commands(text):
                     created_files.append(abs_path)
             i -= 1
         i += 1
+
+    add_step(f"Created {len(created_files)} file(s)")
     deps_result = _auto_install_deps(created_files)
     if deps_result:
         results.append(deps_result)
@@ -817,7 +846,7 @@ def _strip_code_fences(text):
     return '\n'.join(l for l in lines if not l.strip().startswith('```'))
 
 _DEPENDENCY_FILES = {
-    "requirements.txt": "pip install -r requirements.txt",
+    "requirements.txt": "pip install --break-system-packages -r requirements.txt",
     "package.json": "npm install",
     "Cargo.toml": "cargo build",
     "go.mod": "go mod download",
