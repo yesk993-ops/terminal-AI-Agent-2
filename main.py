@@ -37,6 +37,21 @@ class AnimatedUI:
         import shutil
         return min(shutil.get_terminal_size().columns, 240)
     
+    def _render_bold(self, text: str) -> str:
+        import re
+        def replace_bold(match):
+            return f"\033[1m{match.group(1)}\033[0m"
+        return re.sub(r'\*\*(.+?)\*\*', replace_bold, text)
+
+    def _visible_len(self, text: str) -> int:
+        import re
+        return len(re.sub(r'\033\[[0-9;]*m', '', text))
+
+    def _pad_ansi(self, text: str, width: int) -> str:
+        visible = self._visible_len(text)
+        pad = max(0, width - visible)
+        return text + ' ' * pad
+
     def animate_box(self, text: str, color: int = 97, delay: float = 0.05) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
@@ -44,8 +59,10 @@ class AnimatedUI:
         
         lines = []
         for raw in text.split('\n'):
-            for wrapped in self._wrap_text(raw, inner) or ['']:
-                lines.append(f"\033[{color}m{v} {wrapped:<{inner}}{v}\033[0m")
+            rendered = self._render_bold(raw)
+            for wrapped in self._wrap_text(rendered, inner) or ['']:
+                padded = self._pad_ansi(wrapped, inner)
+                lines.append(f"\033[{color}m{v} {padded}{v}\033[0m")
         
         top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
         bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
