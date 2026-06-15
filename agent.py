@@ -3,7 +3,7 @@
 tell - AI coding & system agent
 Security: API key via env var, path validation, dangerous command blocking
 """
-import requests, json, os, sys, subprocess, shutil, time, threading, itertools, textwrap, re, random, platform
+import requests, json, os, sys, subprocess, shutil, time, threading, itertools, textwrap, re, random, platform, shlex
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -748,17 +748,15 @@ def run_commands(text):
             for fence in ('```', '`', '~~~', '~'):
                 cmd = cmd.rstrip(fence)
             # Fix port conflicts: if http.server uses 8000 and it's busy, use 8080
-            if 'http.server' in cmd and ('8000' in cmd or '-m http.server' in cmd):
+            if 'http.server' in cmd:
                 import socket
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 try:
                     s.bind(('', 8000))
                     s.close()
                 except OSError:
-                    cmd = cmd.replace('8000', '8080')
-                    cmd = cmd.replace('-m http.server', '-m http.server --bind 0.0.0.0 -p 8080') if '-m http.server' in cmd and '-p' not in cmd else cmd
-                    if cmd == l[8:].strip():
-                        cmd = "python3 -m http.server 8080"
+                    # Port 8000 is busy, use 8080
+                    cmd = "python3 -m http.server 8080"
                 finally:
                     try:
                         s.close()
@@ -780,10 +778,15 @@ def run_commands(text):
                 path = path.rstrip(fence)
             # Remove <code> tags from path
             path = re.sub(r'</?code>', '', path).strip()
-            # Skip paths without file extensions (likely directory names)
-            # Also skip paths ending with / (directories)
+            # Skip paths ending with / (directories)
+            if path.endswith('/'):
+                i += 1
+                continue
+            # Skip paths that are just directory names (no extension, no /)
             basename = os.path.basename(path.rstrip('/'))
-            if '.' not in basename or path.endswith('/'):
+            # Allow files without extensions if they look like real filenames
+            ALLOWED_NO_EXT = {'Makefile', 'Dockerfile', 'LICENSE', 'README', 'Procfile', '.gitignore', '.dockerignore'}
+            if '.' not in basename and basename not in ALLOWED_NO_EXT:
                 i += 1
                 continue
             # Validate path before processing
@@ -860,16 +863,20 @@ _DEPENDENCY_FILES = {
 }
 
 def _auto_install_deps(created_files):
-    detected = set()
+    detected = {}  # basename -> full path
     for f in created_files:
         basename = os.path.basename(f)
         if basename in _DEPENDENCY_FILES and basename not in detected:
-            detected.add(basename)
+            detected[basename] = f
     if not detected:
         return ""
-    cmds = [_DEPENDENCY_FILES[d] for d in detected]
     parts = []
-    for cmd in cmds:
+    for basename, full_path in detected.items():
+        # Use absolute path for requirements.txt
+        if basename == "requirements.txt":
+            cmd = f"pip install --break-system-packages -r {shlex.quote(full_path)}"
+        else:
+            cmd = _DEPENDENCY_FILES[basename]
         out = execute(cmd, timeout=120)
         parts.append(f"  $ {cmd}\n{out}")
     return "Dependencies:\n" + "\n".join(parts)

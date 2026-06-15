@@ -135,37 +135,84 @@ class TellAgent:
         Also auto-detect code blocks and create files from them."""
         import re
         import subprocess
+        import shlex
         
         results = []
         created_files = []
+        step_num = 0
         lines = text.split('\n')
         i = 0
         has_directives = False
+
+        def add_step(msg):
+            nonlocal step_num
+            step_num += 1
+            results.append(f"\n  Step {step_num}: {msg}")
+
+        add_step("Parsing response for directives")
         
         while i < len(lines):
             line = lines[i].strip()
+            # Remove <code> tags
+            line = re.sub(r'</?code>', '', line).strip()
             
             if line.startswith('WRITE:'):
                 has_directives = True
                 # Parse file path
                 path = line[6:].strip()
                 path = path.strip('`')
+                # Remove <code> tags from path
+                path = re.sub(r'</?code>', '', path).strip()
+                
+                # Skip paths ending with / (directories)
+                if path.endswith('/'):
+                    i += 1
+                    continue
+                # Skip paths that are just directory names
+                basename = os.path.basename(path.rstrip('/'))
+                ALLOWED_NO_EXT = {'Makefile', 'Dockerfile', 'LICENSE', 'README', 'Procfile', '.gitignore', '.dockerignore'}
+                if '.' not in basename and basename not in ALLOWED_NO_EXT:
+                    i += 1
+                    continue
                 
                 # Collect content until next WRITE: or EXECUTE: or end
                 content_lines = []
+                seen_lines = set()
                 i += 1
+                opened = False
                 while i < len(lines):
                     next_line = lines[i].strip()
+                    # Remove <code> tags
+                    next_line = re.sub(r'</?code>', '', next_line).strip()
                     if next_line.startswith('WRITE:') or next_line.startswith('EXECUTE:'):
                         break
                     if next_line.startswith('```') or next_line == '`':
+                        if not opened:
+                            opened = True
+                            i += 1
+                            continue
+                        else:
+                            i += 1
+                            break
+                    # Deduplicate lines
+                    if next_line and next_line in seen_lines:
                         i += 1
                         continue
+                    if next_line:
+                        seen_lines.add(next_line)
                     content_lines.append(lines[i])
                     i += 1
                 
                 if content_lines:
                     content = '\n'.join(content_lines)
+                    # Remove code fences
+                    content_lines_clean = []
+                    for cl in content.split('\n'):
+                        if not cl.strip().startswith('```'):
+                            content_lines_clean.append(cl)
+                    content = '\n'.join(content_lines_clean)
+                    
+                    add_step(f"Creating file: {path} ({len(content)} bytes)")
                     # Write the file
                     try:
                         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
@@ -176,18 +223,34 @@ class TellAgent:
                         created_files.append(os.path.abspath(path))
                     except Exception as e:
                         results.append(f"Error creating {path}: {e}")
-                continue
+                i -= 1
             
             elif line.startswith('EXECUTE:'):
                 has_directives = True
                 cmd = line[8:].strip()
                 cmd = cmd.strip('`')
                 
+                # Fix port conflicts
+                if 'http.server' in cmd:
+                    import socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    try:
+                        s.bind(('', 8000))
+                        s.close()
+                    except OSError:
+                        cmd = "python3 -m http.server 8080"
+                    finally:
+                        try:
+                            s.close()
+                        except:
+                            pass
+                
                 # Skip dangerous commands
                 dangerous = ['rm -rf', 'mkfs', 'dd if=', 'shutdown', 'reboot', '> /dev/']
                 if any(d in cmd.lower() for d in dangerous):
-                    results.append(f"BLOCKED: {cmd[:50]}... is dangerous")
+                    add_step(f"BLOCKED: {cmd[:50]}... is dangerous")
                 else:
+                    add_step(f"Running: {cmd}")
                     try:
                         r = subprocess.run(
                             ['sh', '-c', cmd],
@@ -208,58 +271,7 @@ class TellAgent:
             
             i += 1
         
-        # If no WRITE:/EXECUTE: directives found, try to auto-detect code blocks
-        if not has_directives:
-            # Look for filename patterns and code blocks
-            code_blocks = []
-            current_file = None
-            current_code = []
-            in_code_block = False
-            
-            for line in lines:
-                stripped = line.strip()
-                
-                # Detect code block start
-                if stripped.startswith('```'):
-                    if in_code_block and current_file and current_code:
-                        # End of code block - save the file
-                        code_blocks.append((current_file, '\n'.join(current_code)))
-                        current_code = []
-                        current_file = None
-                        in_code_block = False
-                    elif not in_code_block:
-                        # Start of code block - look for filename before this
-                        in_code_block = True
-                        continue
-                
-                # If we're in a code block, collect code
-                if in_code_block:
-                    current_code.append(line)
-                    continue
-                
-                # Detect filename patterns (before code block)
-                if re.match(r'^[\w\-]+\.(py|js|ts|html|css|json|txt|md|yml|yaml|sh)$', stripped):
-                    current_file = stripped
-                    current_code = []
-            
-            # Handle any remaining code block
-            if in_code_block and current_file and current_code:
-                code_blocks.append((current_file, '\n'.join(current_code)))
-            
-            # Create files from detected code blocks
-            for filename, code in code_blocks:
-                if code.strip():
-                    try:
-                        # Clean up the code - remove leading/trailing empty lines
-                        code = code.strip()
-                        os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
-                        fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                        with os.fdopen(fd, 'w') as f:
-                            f.write(code)
-                        results.append(f"Created: {filename} ({len(code)} bytes)")
-                        created_files.append(os.path.abspath(filename))
-                    except Exception as e:
-                        results.append(f"Error creating {filename}: {e}")
+        add_step(f"Created {len(created_files)} file(s)")
         
         # Auto-install dependencies if requirements.txt or package.json was created
         for f in created_files:
@@ -267,10 +279,10 @@ class TellAgent:
             if basename == 'requirements.txt':
                 try:
                     r = subprocess.run(
-                        ['pip', 'install', '-r', 'requirements.txt'],
+                        ['pip', 'install', '--break-system-packages', '-r', f],
                         capture_output=True, text=True, timeout=120
                     )
-                    results.append(f"$ pip install -r requirements.txt\n{r.stdout[:500]}")
+                    results.append(f"$ pip install --break-system-packages -r {f}\n{r.stdout[:500]}")
                 except Exception as e:
                     results.append(f"Error installing deps: {e}")
             elif basename == 'package.json':
@@ -428,13 +440,22 @@ RESPONSE STRUCTURE:
 FORMATTING RULES:
 - NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
 - Use PLAIN TEXT ONLY
-- Use WRITE: and EXECUTE: directives
+- Use backticks only for actual code in explanations
+- Use WRITE: and EXECUTE: directives as shown below
 
 ACTION DIRECTIVES:
-WRITE: filename
+WRITE: relative/path/to/file
 <file content here — complete, working code>
 
-EXECUTE: shell command
+EXECUTE: shell command (one line only)
+
+Chain multiple WRITE: and EXECUTE: directives. Example:
+WRITE: app.py
+<code>
+WRITE: requirements.txt
+<code>
+EXECUTE: pip install -r requirements.txt
+EXECUTE: python app.py
 
 CODE QUALITY STANDARDS (MUST FOLLOW):
 
@@ -495,10 +516,18 @@ When creating a project, ALWAYS create:
 - .gitignore
 - Test files if applicable
 
+FRAMEWORKS AND TOOLS:
+- Python: Flask, Django, FastAPI, asyncio, requests, sqlite3
+- JavaScript: Node.js, Express, React, Next.js
+- HTML/CSS: Responsive design, Tailwind, Bootstrap
+- Databases: SQLite, PostgreSQL, MongoDB
+- DevOps: Docker, docker-compose, shell scripts
+- Testing: pytest, unittest, jest
+
 SYSTEM TASKS:
-- Detect OS and use appropriate commands
-- Install packages using right package manager
-- Show actual command output
+- Detect OS (Linux/Mac/Windows) and use appropriate commands
+- Install packages using the right package manager
+- Run projects and show output
 - NEVER run destructive commands
 
 OUTPUT:

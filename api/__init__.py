@@ -178,50 +178,60 @@ class NVIDIAAgent:
         text = self._strip_reasoning(text)
         if not text:
             return text
-        # Preserve WRITE: and EXECUTE: directives - extract them first
-        directives = []
+
         lines = text.split('\n')
-        cleaned_lines = []
+
+        # For coding responses: extract ONLY directive blocks, strip narrative
+        directive_blocks = []
+        current_block = []
         in_directive = False
-        directive_content = []
-        
+
         for line in lines:
             stripped = line.strip()
+            # Remove <code> and </code> tags
+            stripped = re.sub(r'</?code>', '', stripped).strip()
+
             if stripped.startswith('WRITE:') or stripped.startswith('EXECUTE:'):
-                if in_directive and directive_content:
-                    cleaned_lines.extend(directive_content)
-                    directive_content = []
+                if in_directive and current_block:
+                    directive_blocks.append('\n'.join(current_block))
                 in_directive = True
-                directive_content.append(line)
+                current_block = [line]
             elif in_directive:
-                if stripped.startswith('```') or stripped == '`':
-                    continue  # Skip code fences
-                directive_content.append(line)
-            else:
-                cleaned_lines.append(line)
-        
-        if directive_content:
-            cleaned_lines.extend(directive_content)
-        
-        text = '\n'.join(cleaned_lines)
-        
-        # Remove markdown bold **text**
+                # Skip code fences
+                if stripped in ('```', '~~~', '`') or stripped.startswith('```'):
+                    continue
+                # Stop at next directive
+                if stripped.startswith('WRITE:') or stripped.startswith('EXECUTE:'):
+                    if current_block:
+                        directive_blocks.append('\n'.join(current_block))
+                    current_block = [line]
+                    continue
+                current_block.append(line)
+
+        if in_directive and current_block:
+            directive_blocks.append('\n'.join(current_block))
+
+        # If we found directives, return only directive blocks
+        if directive_blocks:
+            return '\n'.join(directive_blocks)
+
+        # Fallback for non-coding responses: clean markdown
+        text = '\n'.join(lines)
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-        # Remove markdown italic *text*
         text = re.sub(r'\*(.*?)\*', r'\1', text)
-        # Remove markdown headers ## Header
         text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-        # Remove horizontal rules ---
         text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
-        # Remove markdown links [text](url)
         text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-        # Remove blockquotes > text
         text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
-        # Remove table pipes |text|
-        text = re.sub(r'\|', ' ', text)
-        # Clean up multiple spaces
+        # Only strip pipes that are NOT in EXECUTE: commands
+        result_lines = []
+        for line in text.split('\n'):
+            if line.strip().startswith('EXECUTE:'):
+                result_lines.append(line)
+            else:
+                result_lines.append(re.sub(r'\|', ' ', line))
+        text = '\n'.join(result_lines)
         text = re.sub(r'  +', ' ', text)
-        # Clean up multiple newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
