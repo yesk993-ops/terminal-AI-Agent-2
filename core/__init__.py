@@ -132,9 +132,12 @@ CORE RULES:
         if self.config.get("performance.enable_caching"):
             cached_response = self._check_cache(query)
             if cached_response:
-                return cached_response
-                
-        response = self.api.generate_response(messages)
+                raw_response = cached_response
+            else:
+                raw_response = self.api.generate_response(messages)
+                self._cache_response(query, raw_response)
+        else:
+            raw_response = self.api.generate_response(messages)
         
         # Auto-add **bold** to section headers and key terms
         import re
@@ -164,11 +167,8 @@ CORE RULES:
                     line = line.replace(stripped, f'**{keyword}**{rest}')
                 result.append(line)
             return '\n'.join(result)
-        response = _auto_bold(response)
+        response = _auto_bold(raw_response)
         
-        if self.config.get("performance.enable_caching"):
-            self._cache_response(query, response)
-            
         return response
         
     def _check_cache(self, query: str) -> Optional[str]:
