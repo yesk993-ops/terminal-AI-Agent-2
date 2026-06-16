@@ -12,27 +12,36 @@ class TerminalUI:
         "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
         "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
     }
+    THEMES = {
+        "eye-friendly": {"border": 37, "text": 188, "prompt": 130, "accent": 107},
+        "warm":         {"border": 130, "text": 180, "prompt": 173, "accent": 179},
+        "cool":         {"border": 37, "text": 153, "prompt": 39, "accent": 33},
+        "default":      {"border": 93, "text": 97, "prompt": 94, "accent": 96},
+    }
 
-    def __init__(self, border_style: str = "rounded"):
+    def __init__(self, border_style: str = "rounded", theme: str = "eye-friendly"):
         self.border_style = border_style
+        self.theme = theme if theme in self.THEMES else "eye-friendly"
         if self.border_style not in self.BORDER_STYLES:
             self.border_style = "rounded"
 
     def get_terminal_width(self) -> int:
         return min(shutil.get_terminal_size().columns, 240)
 
-    def display_box(self, text: str, color: int = 93) -> None:
+    def display_box(self, text: str, color: int = None) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.BORDER_STYLES[self.border_style]
+        t = self.THEMES[self.theme]
+        bc = t["border"] if color is None else color
         
         lines = []
         for raw in text.split('\n'):
             for wrapped in textwrap.wrap(raw, inner) or ['']:
-                lines.append(f"\033[{color}m{v} {wrapped:<{inner}}{v}\033[0m")
+                lines.append(f"\033[38;5;{bc}m{v}\033[38;5;{t['text']}m {wrapped:<{inner}}\033[38;5;{bc}m{v}\033[0m")
                 
-        top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
-        bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
+        top = f"\033[1;38;5;{bc}m{tl}{h*(cols-2)}{tr}\033[0m"
+        bot = f"\033[1;38;5;{bc}m{bl}{h*(cols-2)}{br}\033[0m"
         
         print(top)
         print('\n'.join(lines))
@@ -47,4 +56,5 @@ class TerminalUI:
         self.border_style = keys[idx]
 
     def display_prompt(self, text: str = "❯") -> None:
-        print(f"\033[94m{text}\033[0m", end=" ")
+        t = self.THEMES[self.theme]
+        print(f"\033[38;5;{t['prompt']}m{text}\033[0m", end=" ")

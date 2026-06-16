@@ -15,6 +15,7 @@ from commands import LocalCommands
 from ui import TerminalUI
 from security import SecurityManager
 from logger import get_logger
+from . import analyzer
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -39,7 +40,8 @@ class TellAgent:
         )
         
         self.ui = TerminalUI(
-            border_style=self.config.get("ui.border_style", "rounded")
+            border_style=self.config.get("ui.border_style", "rounded"),
+            theme=self.config.get("ui.theme", "eye-friendly")
         )
         
         self.commands = LocalCommands(self.security, self.api)
@@ -78,88 +80,56 @@ class TellAgent:
             
         return action, value
 
+    def _get_dynamic_system_prompt(self, query: str) -> dict:
+        result = analyzer.analyze(query)
+        level = result["level"]
+        content = analyzer.SYSTEM_PROMPTS[level]
+        self.log.info(f"Query complexity: {level} (score={result['score']}, factors={result['factors']})")
+        return {"role": "system", "content": content}
+
     def process_query(self, query: str) -> str:
         messages = self.get_messages()
-        
-        # Ensure system prompt is present
-        if not messages or messages[0].get("role") != "system":
-            query_prompt = {
-                "role": "system",
-                "content": """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers in professional, documentation-quality format.
+        result = analyzer.analyze(query)
+        level = result["level"]
 
-FORMATTING RULES (STRICT):
-- Apply professional, documentation-quality formatting to every response
-- For all lists, workflows, procedures, architectures, components, stages, commands, file paths, services, concepts, best practices, advantages, disadvantages, troubleshooting steps, and summaries: ALWAYS bold the primary keyword, title, or key phrase at the beginning of each point using **bold**, followed by a colon and its explanation
-- Format so users can understand the entire topic by scanning only the emphasized key points
-- Maintain clear visual hierarchy with structured headings, numbered steps, and bullet points
-- Emphasize only the most important terms — never entire sentences or paragraphs
-- Ensure every major section contains clearly identifiable key points
-- Create highly readable, professional, certification-grade technical documentation
+        if level == "complex":
+            self.log.info(f"Using complex prompt for query ({result['score']} pts): {result['factors']}")
 
-BOLD USAGE — apply **bold** to:
-- Section headings: **Linux Boot Process:**, **Key Concepts:**, **Summary:**
-- Stage names: **Stage 1: POST**, **Phase 2: Kernel Loading**
-- List item keywords: **Web Development**: Python is used for..., **Automation**: Python automates...
-- Important commands: `systemctl start nginx`, `docker build -t app .`
-- File paths: **/etc/fstab**, **/boot/grub/grub.cfg**
-- Warnings and critical notes: **Warning:**, **Important:**, **Danger:**
-- Definitions: **PID** is the Process ID, **UUID** is a unique identifier
-- Key takeaways and summaries
-- Technology/framework/library names: **React**, **Docker**, **Kubernetes**
-- OS/platform names: **Linux**, **Windows**, **macOS**
-- Advantages/Disadvantages: **Advantage**: ..., **Disadvantage**: ...
-- Best practices: **Best Practice**: ..., **Recommendation**: ...
-- Do NOT bold entire sentences — only key terms, names, and headers
+        system_prompt = self._get_dynamic_system_prompt(query)
 
-RESPONSE STYLE:
-- Sound like a knowledgeable friend, not a textbook
-- Be conversational yet authoritative
-- Use natural flow, not robotic structure
-- Mix short and long sentences for rhythm
-- Use real-world analogies to explain complex ideas
-- Be specific with examples, not vague generalizations
+        # Remove old system prompt, insert fresh one based on this query
+        messages = [m for m in messages if m.get("role") != "system"]
+        messages.insert(0, system_prompt)
 
-CORE RULES:
-- Start with a direct, confident answer (1-2 sentences)
-- Then expand with depth and context
-- Use "Think of it like..." analogies for complex topics
-- Include practical "why this matters" explanations
-- Be honest about limitations and unknowns
-- End with something useful: next steps, a tip, or a question"""
-            }
-            messages.insert(0, query_prompt)
-        
         if self.config.get("performance.enable_caching"):
             cached_response = self._check_cache(query)
             if cached_response:
                 raw_response = cached_response
             else:
-                raw_response = self.api.generate_response(messages)
+                max_tokens = analyzer.get_max_tokens(level)
+                raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
                 self._cache_response(query, raw_response)
         else:
-            raw_response = self.api.generate_response(messages)
-        
-        # Auto-add **bold** to section headers and key terms
+            max_tokens = analyzer.get_max_tokens(level)
+            raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
+
         import re
         def _auto_bold(text):
             lines = text.split('\n')
             result = []
             for line in lines:
                 stripped = line.strip()
-                # Bold standalone section headers (short lines ending with or without :)
                 if (len(stripped) < 60 and len(stripped) > 3
                     and '**' not in stripped and stripped.count(' ') >= 1
                     and not stripped.startswith('-') and '.' not in stripped):
                     if stripped[0].isupper():
                         line = line.replace(stripped, f'**{stripped}**')
-                # Bold numbered list items: "1. Keyword: explanation"
                 elif re.match(r'^\d+\.\s+[A-Z][^:]+:\s', stripped) and '**' not in stripped:
                     match = re.match(r'^(\d+\.\s+[^:]+:)(.*)', stripped)
                     if match:
                         keyword_part = match.group(1)
                         rest = match.group(2)
                         line = line.replace(stripped, f'**{keyword_part}**{rest}')
-                # Bold unnumbered list items: "Keyword: explanation"
                 elif re.match(r'^[A-Z][a-zA-Z\s]+:\s', stripped) and '**' not in stripped and len(stripped) < 80:
                     colon_idx = stripped.index(':')
                     keyword = stripped[:colon_idx+1]
@@ -168,7 +138,7 @@ CORE RULES:
                 result.append(line)
             return '\n'.join(result)
         response = _auto_bold(raw_response)
-        
+
         return response
         
     def _check_cache(self, query: str) -> Optional[str]:
@@ -410,72 +380,12 @@ CORE RULES:
     def run(self) -> None:
         self.ui.display_welcome()
         
-        query_prompt = [
-            {"role": "system", "content": """You are a world-class AI assistant — respond like the best AI models (Claude, Gemini, GPT-4). Give exceptional, insightful, and expert-level answers in professional, documentation-quality format.
-
-FORMATTING RULES (STRICT):
-- Apply professional, documentation-quality formatting to every response
-- For all lists, workflows, procedures, architectures, components, stages, commands, file paths, services, concepts, best practices, advantages, disadvantages, troubleshooting steps, and summaries: ALWAYS bold the primary keyword, title, or key phrase at the beginning of each point using **bold**, followed by a colon and its explanation
-- Format so users can understand the entire topic by scanning only the emphasized key points
-- Maintain clear visual hierarchy with structured headings, numbered steps, and bullet points
-- Emphasize only the most important terms — never entire sentences or paragraphs
-- Ensure every major section contains clearly identifiable key points
-- Create highly readable, professional, certification-grade technical documentation
-
-BOLD USAGE — apply **bold** to:
-- Section headings: **Linux Boot Process:**, **Key Concepts:**, **Summary:**
-- Stage names: **Stage 1: POST**, **Phase 2: Kernel Loading**
-- List item keywords: **Web Development**: Python is used for..., **Automation**: Python automates...
-- Important commands: `systemctl start nginx`, `docker build -t app .`
-- File paths: **/etc/fstab**, **/boot/grub/grub.cfg**
-- Warnings and critical notes: **Warning:**, **Important:**, **Danger:**
-- Definitions: **PID** is the Process ID, **UUID** is a unique identifier
-- Key takeaways and summaries
-- Technology/framework/library names: **React**, **Docker**, **Kubernetes**
-- OS/platform names: **Linux**, **Windows**, **macOS**
-- Advantages/Disadvantages: **Advantage**: ..., **Disadvantage**: ...
-- Best practices: **Best Practice**: ..., **Recommendation**: ...
-- Do NOT bold entire sentences — only key terms, names, and headers
-
-RESPONSE STYLE:
-- Sound like a knowledgeable friend, not a textbook
-- Be conversational yet authoritative
-- Use natural flow, not robotic structure
-- Mix short and long sentences for rhythm
-- Use real-world analogies to explain complex ideas
-- Be specific with examples, not vague generalizations
-
-CORE RULES:
-- Start with a direct, confident answer (1-2 sentences)
-- Then expand with depth and context
-- Use "Think of it like..." analogies for complex topics
-- Include practical "why this matters" explanations
-- Be honest about limitations and unknowns
-- End with something useful: next steps, a tip, or a question
-
-LANGUAGE:
-- Match the language of the user's question EXACTLY
-- If user asks in English, respond in English
-- If user asks in Hindi, respond in Hindi
-- If user asks in Marathi, respond in Marathi
-- If user asks in Spanish, respond in Spanish
-- If user asks in any other language, respond in that same language
-- Never mix languages in same response
-- Use natural, fluent, grammatically correct language
-
-RESPONSE STRUCTURE:
-1. Opening — Direct answer that immediately satisfies the question
-2. Explanation — Deeper dive with clear, logical flow
-3. Example — Real-world analogy or practical use case
-4. Tips — Actionable advice or common pitfalls to avoid
-5. Closing — Suggest what to explore next"""}
-        ]
-        
-        self.message_history = query_prompt
+        self.message_history = []
         
         while True:
             try:
-                user_input = input("\033[94m❯\033[0m ").strip()
+                self.ui.display_prompt()
+                user_input = input().strip()
             except (EOFError, KeyboardInterrupt):
                 print("\nBye!")
                 break

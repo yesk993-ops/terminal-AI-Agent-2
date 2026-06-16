@@ -38,7 +38,37 @@ class TellConfig:
             },
             "ui": {
                 "border_style": "rounded",
-                "theme": "default"
+                "theme": "eye-friendly",
+                "themes": {
+                    "eye-friendly": {
+                        "border": 102,
+                        "text": 188,
+                        "prompt": 130,
+                        "accent": 107,
+                        "bold": 107
+                    },
+                    "warm": {
+                        "border": 130,
+                        "text": 180,
+                        "prompt": 173,
+                        "accent": 179,
+                        "bold": 179
+                    },
+                    "cool": {
+                        "border": 37,
+                        "text": 153,
+                        "prompt": 39,
+                        "accent": 33,
+                        "bold": 39
+                    },
+                    "default": {
+                        "border": 93,
+                        "text": 97,
+                        "prompt": 94,
+                        "accent": 96,
+                        "bold": 96
+                    }
+                }
             },
             "performance": {
                 "enable_caching": True,

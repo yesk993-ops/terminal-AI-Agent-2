@@ -32,6 +32,11 @@ class AnimatedUI:
             "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
         }
         self.current_style = "rounded"
+        self.ef = lambda c: f"38;5;{c}"
+        self.border_clr = 37
+        self.text_clr = 188
+        self.bold_clr = 107
+        self.vbar_clr = 37
         
     def get_terminal_width(self) -> int:
         import shutil
@@ -40,7 +45,7 @@ class AnimatedUI:
     def _render_bold(self, text: str) -> str:
         import re
         def replace_bold(match):
-            return f"\033[1;96m{match.group(1)}\033[0m\033[97m"
+            return f"\033[1;{self.ef(self.bold_clr)}m{match.group(1)}\033[0m\033[{self.ef(self.text_clr)}m"
         return re.sub(r'\*\*(.+?)\*\*', replace_bold, text)
 
     def _visible_len(self, text: str) -> int:
@@ -52,10 +57,11 @@ class AnimatedUI:
         pad = max(0, width - visible)
         return text + ' ' * pad
 
-    def animate_box(self, text: str, color: int = 96, delay: float = 0.005) -> None:
+    def animate_box(self, text: str, color: int = None, delay: float = 0.005) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.border_styles[self.current_style]
+        bc = self.border_clr if color is None else color
         
         lines = []
         for raw in text.split('\n'):
@@ -63,15 +69,14 @@ class AnimatedUI:
                 rendered = self._render_bold(wrapped_raw)
                 lines.append(rendered)
         
-        border_color = f"1;{color}"
+        border_color = f"1;{self.ef(bc)}"
         print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
         for line in lines:
-            sys.stdout.write(f"\033[{color}m{v}\033[97m ")
+            sys.stdout.write(f"\033[{self.ef(self.vbar_clr)}m{v}\033[{self.ef(self.text_clr)}m ")
             visible_len = self._visible_len(line)
             padding = inner - visible_len
             if padding < 0:
                 padding = 0
-            # Split into ANSI segments and visible text for smooth animation
             import re as _re
             segments = _re.split(r'(\033\[[0-9;]*m)', line)
             for seg in segments:
@@ -83,7 +88,7 @@ class AnimatedUI:
                         sys.stdout.flush()
                         if delay > 0:
                             time.sleep(delay * 0.3)
-            sys.stdout.write(f"{' ' * padding}\033[{color}m{v}\033[0m\n")
+            sys.stdout.write(f"{' ' * padding}\033[{self.ef(self.vbar_clr)}m{v}\033[0m\n")
             if delay > 0:
                 time.sleep(delay)
         print(f"\033[{border_color}m{bl}{h*(cols-2)}{br}\033[0m")
