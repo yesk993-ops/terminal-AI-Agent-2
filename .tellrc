@@ -13,7 +13,7 @@
       "chmod 777 /*", "chown ", "passwd", "useradd", "userdel",
       "usermod", "groupadd", "groupdel",
       "format c:", "format c:\\", "del /f /s", "rd /s /q",
-      "diskpart", "reg delete", "net user", "sc delete",
+      "diskpart", "reg delete", "net user", "sc delete"
     ]
   },
   "ui": {
