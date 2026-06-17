@@ -34,9 +34,10 @@ class AnimatedUI:
             "classic": ("╔", "═", "╗", "║", "╚", "╝"),
             "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
             "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
+            "minimal": ("╭", "─", "╮", " ", "╰", "╯"),
             "clean":   (" ", " ", " ", " ", " ", " "),
         }
-        self.current_style = "rounded"
+        self.current_style = "minimal"
         self.ef = lambda c: f"38;5;{c}"
         self.border_clr = 37
         self.text_clr = 188
@@ -128,7 +129,7 @@ def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
         # Inline mode - direct execution
         agent = TellAgent()
-        animated_ui.current_style = agent.config.get("ui.border_style", "rounded")
+        animated_ui.current_style = agent.config.get("ui.border_style", "minimal")
 
         query = sys.argv[2].lower()
 

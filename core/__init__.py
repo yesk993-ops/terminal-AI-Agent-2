@@ -6,6 +6,7 @@ import json
 import socket
 import subprocess
 import time
+import itertools
 import platform
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
@@ -47,7 +48,7 @@ class TellAgent:
         )
 
         self.ui = TerminalUI(
-            border_style=self.config.get("ui.border_style", "rounded"),
+            border_style=self.config.get("ui.border_style", "minimal"),
             theme=self.config.get("ui.theme", "eye-friendly")
         )
 
@@ -452,12 +453,19 @@ class TellAgent:
                     print()
                 else:
                     self.add_message("user", user_input)
+                    # Show animated spinner while waiting for response
+                    spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+                    sys.stdout.write("\033[?25l")  # hide cursor
+                    spinner_color = self.ui.THEMES[self.ui.theme]['prompt']
+                    sys.stdout.write(f"\033[38;5;{spinner_color}m{next(spinner)} Thinking...\033[0m")
+                    sys.stdout.flush()
                     full = ""
                     for partial in self.process_query_stream(user_input):
                         full = partial
+                    sys.stdout.write(f"\r\033[K\033[?25h")  # clear spinner, show cursor
                     self.add_message("assistant", full)
-                    self.ui.display_box(full)
                     print()
+                    self.ui.display_box(full)
 
 # Keep for backward compatibility
 def main():

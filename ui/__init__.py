@@ -12,6 +12,7 @@ class TerminalUI:
         "classic": ("╔", "═", "╗", "║", "╚", "╝"),
         "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
         "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
+        "minimal": ("╭", "─", "╮", " ", "╰", "╯"),
         "clean":   (" ", " ", " ", " ", " ", " "),
     }
     THEMES = {
@@ -21,11 +22,11 @@ class TerminalUI:
         "default":      {"border": 93, "text": 97, "prompt": 94, "accent": 96},
     }
 
-    def __init__(self, border_style: str = "rounded", theme: str = "eye-friendly"):
+    def __init__(self, border_style: str = "minimal", theme: str = "eye-friendly"):
         self.border_style = border_style
         self.theme = theme if theme in self.THEMES else "eye-friendly"
         if self.border_style not in self.BORDER_STYLES:
-            self.border_style = "rounded"
+            self.border_style = "minimal"
 
     def get_terminal_width(self) -> int:
         return min(shutil.get_terminal_size().columns, 240)

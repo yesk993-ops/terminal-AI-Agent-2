@@ -37,7 +37,7 @@ class TellConfig:
                 ]
             },
             "ui": {
-                "border_style": "rounded",
+                "border_style": "minimal",
                 "theme": "eye-friendly",
                 "themes": {
                     "eye-friendly": {
@@ -73,8 +73,8 @@ class TellConfig:
             "performance": {
                 "enable_caching": True,
                 "cache_ttl": 3600,
-                "max_retries": 3,
-                "timeout": 45
+                "max_retries": 2,
+                "timeout": 15
             },
             "behavior": {
                 "enable_command_history": True,
