@@ -34,6 +34,7 @@ class AnimatedUI:
             "classic": ("╔", "═", "╗", "║", "╚", "╝"),
             "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
             "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
+            "clean":   (" ", " ", " ", " ", " ", " "),
         }
         self.current_style = "rounded"
         self.ef = lambda c: f"38;5;{c}"
@@ -115,6 +116,7 @@ def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
         # Inline mode - direct execution
         agent = TellAgent()
+        animated_ui.current_style = agent.config.get("ui.border_style", "rounded")
 
         query = sys.argv[2].lower()
 
@@ -154,6 +156,7 @@ def main():
                 print()
             elif query == "border":
                 agent.ui.cycle_border_style()
+                animated_ui.current_style = agent.ui.border_style
                 animated_ui.animate_box(f"Border style: {agent.ui.border_style}")
                 print()
             elif query == "reset":

@@ -1,19 +1,57 @@
 {
   "models": {
-    "query": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
-    "system": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"]
+    "query": [
+      "meta/llama-3.1-8b-instruct",
+      "deepseek-ai/deepseek-v4-pro",
+      "mistralai/mistral-small-4-119b-2603"
+    ],
+    "system": [
+      "meta/llama-3.1-8b-instruct",
+      "deepseek-ai/deepseek-v4-pro",
+      "mistralai/mistral-small-4-119b-2603"
+    ]
   },
   "security": {
-    "allowed_write_dirs": [".", "~", "/tmp"],
+    "allowed_write_dirs": [
+      ".",
+      "~",
+      "/tmp"
+    ],
     "max_file_size": 1048576,
     "dangerous_commands": [
-      "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "> /dev/sda",
-      "> /dev/sdb", "format /dev", "mkfs.", "mkswap", "shutdown",
-      "reboot", "poweroff", "halt", "init 0", "init 6", "chmod 777 /",
-      "chmod 777 /*", "chown ", "passwd", "useradd", "userdel",
-      "usermod", "groupadd", "groupdel",
-      "format c:", "format c:\\", "del /f /s", "rd /s /q",
-      "diskpart", "reg delete", "net user", "sc delete"
+      "rm -rf /",
+      "rm -rf /*",
+      "mkfs",
+      "dd if=",
+      ":(){",
+      "> /dev/sda",
+      "> /dev/sdb",
+      "format /dev",
+      "mkfs.",
+      "mkswap",
+      "shutdown",
+      "reboot",
+      "poweroff",
+      "halt",
+      "init 0",
+      "init 6",
+      "chmod 777 /",
+      "chmod 777 /*",
+      "chown ",
+      "passwd",
+      "useradd",
+      "userdel",
+      "usermod",
+      "groupadd",
+      "groupdel",
+      "format c:",
+      "format c:\\",
+      "del /f /s",
+      "rd /s /q",
+      "diskpart",
+      "reg delete",
+      "net user",
+      "sc delete"
     ]
   },
   "ui": {
