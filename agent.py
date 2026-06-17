@@ -5,6 +5,9 @@ Delegates all functionality to the modular core modules.
 """
 import os
 import sys
+import shutil
+import textwrap
+import time
 
 API_KEY = os.environ.get("NVIDIA_API_KEY")
 if not API_KEY:
@@ -14,16 +17,11 @@ if not API_KEY:
 
 from core import TellAgent
 from core.prompts import CODING_PROMPT, QUERY_PROMPT
-from api import NVIDIAAgent
 from ui import TerminalUI
-from security import SecurityManager
-from commands import LocalCommands
 
 IS_WINDOWS = __import__('platform').system() == "Windows"
 
 BORDER_STYLES = TerminalUI.BORDER_STYLES
-
-import shutil, textwrap, re, time, threading, subprocess
 
 def term_width():
     return min(shutil.get_terminal_size().columns, 240)
@@ -206,7 +204,7 @@ def main():
             print()
             cmd_results = ""
             if "EXECUTE:" in response or "WRITE:" in response:
-                r, created = agent._run_commands_with_files(response)
+                r, _ = agent._run_commands_with_files(response)
                 if r:
                     print(box(r, 97))
                     print()

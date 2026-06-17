@@ -1,6 +1,9 @@
+"""Core agent orchestration — TellAgent, prompt selection, command dispatch."""
 import os
+import re
 import sys
 import json
+import subprocess
 import time
 import platform
 from typing import List, Dict, Any, Optional, Tuple
@@ -24,63 +27,62 @@ class TellAgent:
     def __init__(self, config_path: str = ".tellrc"):
         self.log = get_logger("TellAgent")
         self.log.info(f"Initializing TellAgent with config: {config_path}")
-        
+
         self.config = TellConfig(config_path)
         self.config.update_from_env()
-        
+
         self.api = NVIDIAAgent(
             api_key=os.environ.get("NVIDIA_API_KEY", ""),
             models=self.config.get("models.system"),
             timeout=self.config.get("performance.timeout", 45)
         )
-        
+
         self.security = SecurityManager(
             allowed_dirs=self.config.get("security.allowed_write_dirs"),
             max_file_size=self.config.get("security.max_file_size"),
             dangerous_commands=self.config.get("security.dangerous_commands")
         )
-        
+
         self.ui = TerminalUI(
             border_style=self.config.get("ui.border_style", "rounded"),
             theme=self.config.get("ui.theme", "eye-friendly")
         )
-        
+
         self.commands = LocalCommands(self.security, self.api)
-        
+
         self.message_history: List[Dict[str, str]] = []
-        
+        self.history: Optional[CommandHistory] = None
+
         if self.config.get("behavior.enable_command_history"):
             from .command_history import CommandHistory
             self.history = CommandHistory(max_size=self.config.get("behavior.max_history_size", 100))
-        else:
-            self.history = None
-            
+
         # Evict expired cache entries on startup
         self._evict_cache()
         self.log.info("TellAgent initialized successfully")
 
     def add_message(self, role: str, content: str) -> None:
         self.message_history.append({"role": role, "content": content})
-        
+
     def get_messages(self) -> List[Dict[str, str]]:
         return self.message_history
-        
+
     def clear_history(self) -> None:
         self.message_history = []
         if self.history:
             self.history.clear()
-            
+
     def execute_command(self, query: str) -> Tuple[str, Any]:
         action, value = self.commands.execute(query)
-        
+
         if action in ("local", "shell"):
             result = value
         else:
             result = value
-            
+
         if self.history and self.config.get("behavior.enable_command_history"):
             self.history.add(query, str(result))
-            
+
         return action, value
 
     def _get_dynamic_system_prompt(self, query: str) -> dict:
@@ -116,7 +118,6 @@ class TellAgent:
             max_tokens = analyzer.get_max_tokens(level)
             raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
 
-        import re
         def _auto_bold(text):
             lines = text.split('\n')
             result = []
@@ -158,59 +159,53 @@ class TellAgent:
         full_text = ""
         for chunk in self.api.generate_stream(messages, max_tokens=max_tokens):
             full_text += chunk
-            import re
             yield full_text
-        
+
     def _check_cache(self, query: str) -> Optional[str]:
         cache_file = Path(".tell_cache.json")
         if not cache_file.exists():
             return None
-            
+
         try:
-            with open(cache_file, 'r') as f:
+            with open(cache_file, 'r', encoding='utf-8') as f:
                 cache = json.load(f)
-                
+
             if query in cache:
                 item = cache[query]
                 if time.time() - item["timestamp"] < self.config.get("performance.cache_ttl", 3600):
                     return item["response"]
-        except Exception:
+        except (KeyError, json.JSONDecodeError, OSError):
             pass
-            
+
         return None
-        
+
     def _cache_response(self, query: str, response: str) -> None:
         cache_file = Path(".tell_cache.json")
-        
+
         try:
             cache_data = {}
             if cache_file.exists():
-                with open(cache_file, 'r') as f:
+                with open(cache_file, 'r', encoding='utf-8') as f:
                     cache_data = json.load(f)
-                    
+
             cache_data[query] = {
                 "response": response,
                 "timestamp": time.time()
             }
-            
-            with open(cache_file, 'w') as f:
+
+            with open(cache_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, indent=2)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             pass
-    
+
     def _run_commands(self, text: str) -> str:
         """Parse and execute WRITE: and EXECUTE: directives from AI response.
         Also auto-detect code blocks and create files from them."""
-        import re
-        import subprocess
-        import shlex
-        
         results = []
         created_files = []
         step_num = 0
         lines = text.split('\n')
         i = 0
-        has_directives = False
 
         def add_step(msg):
             nonlocal step_num
@@ -218,20 +213,19 @@ class TellAgent:
             results.append(f"\n  Step {step_num}: {msg}")
 
         add_step("Parsing response for directives")
-        
+
         while i < len(lines):
             line = lines[i].strip()
             # Remove <code> tags
             line = re.sub(r'</?code>', '', line).strip()
-            
+
             if line.startswith('WRITE:'):
-                has_directives = True
                 # Parse file path
                 path = line[6:].strip()
                 path = path.strip('`')
                 # Remove <code> tags from path
                 path = re.sub(r'</?code>', '', path).strip()
-                
+
                 # Skip paths ending with / (directories)
                 if path.endswith('/'):
                     i += 1
@@ -242,7 +236,7 @@ class TellAgent:
                 if '.' not in basename and basename not in ALLOWED_NO_EXT:
                     i += 1
                     continue
-                
+
                 # Collect content until next WRITE: or EXECUTE: or end
                 content_lines = []
                 seen_lines = set()
@@ -259,9 +253,8 @@ class TellAgent:
                             opened = True
                             i += 1
                             continue
-                        else:
-                            i += 1
-                            break
+                        i += 1
+                        break
                     # Deduplicate lines
                     if next_line and next_line in seen_lines:
                         i += 1
@@ -270,7 +263,7 @@ class TellAgent:
                         seen_lines.add(next_line)
                     content_lines.append(lines[i])
                     i += 1
-                
+
                 if content_lines:
                     content = '\n'.join(content_lines)
                     # Remove code fences
@@ -279,25 +272,24 @@ class TellAgent:
                         if not cl.strip().startswith('```'):
                             content_lines_clean.append(cl)
                     content = '\n'.join(content_lines_clean)
-                    
+
                     add_step(f"Creating file: {path} ({len(content)} bytes)")
                     # Write the file
                     try:
                         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
                         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                        with os.fdopen(fd, 'w') as f:
-                            f.write(content)
+                        with os.fdopen(fd, 'w') as fh:
+                            fh.write(content)
                         results.append(f"Created: {path} ({len(content)} bytes)")
                         created_files.append(os.path.abspath(path))
                     except Exception as e:
                         results.append(f"Error creating {path}: {e}")
                 i -= 1
-            
+
             elif line.startswith('EXECUTE:'):
-                has_directives = True
                 cmd = line[8:].strip()
                 cmd = cmd.strip('`')
-                
+
                 # Fix port conflicts
                 if 'http.server' in cmd:
                     import socket
@@ -312,7 +304,7 @@ class TellAgent:
                             s.close()
                         except:
                             pass
-                
+
                 # Skip dangerous commands
                 dangerous = ['rm -rf', 'mkfs', 'dd if=', 'shutdown', 'reboot', '> /dev/']
                 if any(d in cmd.lower() for d in dangerous):
@@ -323,7 +315,7 @@ class TellAgent:
                         r = subprocess.run(
                             ['sh', '-c', cmd],
                             capture_output=True, text=True, timeout=120,
-                            env={k: v for k, v in os.environ.items() 
+                            env={k: v for k, v in os.environ.items()
                                  if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV")}
                         )
                         output = r.stdout.strip()
@@ -336,11 +328,11 @@ class TellAgent:
                         results.append(f"$ {cmd}\nError: {e}")
                 i += 1
                 continue
-            
+
             i += 1
-        
+
         add_step(f"Created {len(created_files)} file(s)")
-        
+
         # Auto-install dependencies if requirements.txt or package.json was created
         for f in created_files:
             basename = os.path.basename(f)
@@ -362,14 +354,13 @@ class TellAgent:
                     results.append(f"$ npm install\n{r.stdout[:500]}")
                 except Exception as e:
                     results.append(f"Error installing deps: {e}")
-        
+
         return '\n'.join(results) if results else ''
 
     def _run_commands_with_files(self, text: str):
         """Run commands and return (results_str, created_files_list)."""
         results = self._run_commands(text)
         created_files = []
-        import re
         for line in results.split('\n'):
             if line.strip().startswith('Created:'):
                 path = line.strip()[8:].strip()
@@ -382,7 +373,7 @@ class TellAgent:
         if not cache_file.exists():
             return
         try:
-            with open(cache_file, 'r') as f:
+            with open(cache_file, 'r', encoding='utf-8') as f:
                 cache = json.load(f)
             ttl = self.config.get("performance.cache_ttl", 3600)
             now = time.time()
@@ -390,48 +381,47 @@ class TellAgent:
             for k in expired:
                 del cache[k]
             if expired:
-                with open(cache_file, 'w') as f:
+                with open(cache_file, 'w', encoding='utf-8') as f:
                     json.dump(cache, f, indent=2)
-        except Exception:
+        except (KeyError, json.JSONDecodeError, OSError):
             pass
 
     def get_help(self) -> str:
         commands = sorted(list(self.commands.get_command_map().keys()))
         help_text = "Built-in commands:\n"
-        for cmd in commands:
-            help_text += f"  {cmd}\n"
-            
+        help_text += "".join(f"  {cmd}\n" for cmd in commands)
+
         help_text += "\ndo <task> - coding/system tasks  |  border  |  reset  |  clear  |  help"
-        
+
         if self.history:
             help_text += "  |  history <n> - show last n commands"
             help_text += "  |  hist <n> - show last n commands"
             help_text += "  |  history - show recent commands"
-        
+
         help_text += "\n"
         return help_text
 
     def show_history(self, count: int = 10) -> str:
         if not self.history:
             return "Command history is disabled."
-            
+
         recent = self.history.get_last(count)
         if not recent:
             return "No commands in history."
-            
+
         result = f"Last {len(recent)} commands:\n"
-        
+
         for i, entry in enumerate(recent, 1):
             timestamp = time.strftime('%H:%M:%S', time.localtime(entry['timestamp']))
             result += f"{i}. [{timestamp}] {entry['command']}\n"
-            
+
         return result
 
     def run(self) -> None:
         self.ui.display_welcome()
-        
+
         self.message_history = []
-        
+
         while True:
             try:
                 self.ui.display_prompt()
@@ -439,59 +429,57 @@ class TellAgent:
             except (EOFError, KeyboardInterrupt):
                 print("\nBye!")
                 break
-                
+
             if not user_input:
                 continue
-                
+
             # Input length validation to prevent DoS
             if len(user_input) > 10000:
                 self.ui.display_box("Input too long (max 10000 characters)")
                 print()
                 continue
-                
+
             if user_input.lower() in ("quit", "exit"):
                 break
-                
+
             if user_input.lower() == "clear":
-                # Use subprocess instead of os.system to prevent command injection
-                import subprocess
                 subprocess.run(["cls" if os.name == "nt" else "clear"], shell=False)
                 continue
-                
+
             if user_input.lower() in ("help", "commands"):
                 help_text = self.get_help()
                 self.ui.display_box(help_text)
                 print()
                 continue
-                
+
             if user_input.lower() == "border":
                 self.ui.cycle_border_style()
                 self.ui.display_box(f"Border style: {self.ui.border_style}")
                 print()
                 continue
-                
+
             if user_input.lower() == "reset":
                 self.clear_history()
                 self.ui.display_box("Conversation reset")
                 print()
                 continue
-                
+
             if user_input.lower() == "history" or user_input.lower() == "hist":
                 hist_text = self.show_history(10)
                 self.ui.display_box(hist_text)
                 print()
                 continue
-                
+
             if user_input.lower().startswith("do "):
                 task = user_input[3:].strip()
                 result = self.commands.execute(task)
-                
+
                 if result and "ai" in result:
                     # Use coding-specific system prompt for "do" tasks
                     coding_prompt = [{"role": "system", "content": CODING_PROMPT}]
                     messages = coding_prompt + [{"role": "user", "content": task}]
                     response = self.api.generate_response(messages)
-                    
+
                     # Parse and execute WRITE: and EXECUTE: directives
                     results = self._run_commands(response)
                     if results:
@@ -500,11 +488,11 @@ class TellAgent:
                     else:
                         self.ui.display_box(response)
                         print()
-                    
+
                     self.add_message("user", task)
                     self.add_message("assistant", response)
                 else:
-                    action, value = result
+                    _, value = result
                     self.ui.display_box(value)
                     print()
             else:

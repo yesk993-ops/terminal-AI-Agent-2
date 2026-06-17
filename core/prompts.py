@@ -1,3 +1,4 @@
+"""Shared system prompts for coding tasks and general Q&A."""
 CODING_PROMPT = """You are an expert coding agent — a real-time coding agent like Cursor or Codex. You build complete projects, write production code, and follow instructions precisely.
 
 FORMATTING RULES:

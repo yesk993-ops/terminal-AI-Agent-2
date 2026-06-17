@@ -1,4 +1,4 @@
-# Configuration management
+"""Configuration loader for .tellrc with env var overrides."""
 import os
 import json
 from typing import Dict, Any, List, Optional
@@ -11,9 +11,9 @@ class TellConfig:
     def _load_config(self) -> Dict[str, Any]:
         if os.path.exists(self.config_path):
             try:
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 pass
         return self._get_default_config()
 
@@ -85,10 +85,10 @@ class TellConfig:
 
     def save(self) -> bool:
         try:
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=2)
             return True
-        except Exception:
+        except OSError:
             return False
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -104,7 +104,7 @@ class TellConfig:
     def set(self, key: str, value: Any) -> None:
         keys = key.split('.')
         target = self.data
-        for i, k in enumerate(keys[:-1]):
+        for _, k in enumerate(keys[:-1]):
             if k not in target:
                 target[k] = {}
             target = target[k]

@@ -1,3 +1,4 @@
+"""Terminal UI — bordered boxes, themes, color rendering."""
 import shutil
 import textwrap
 import platform
@@ -28,21 +29,21 @@ class TerminalUI:
     def get_terminal_width(self) -> int:
         return min(shutil.get_terminal_size().columns, 240)
 
-    def display_box(self, text: str, color: int = None) -> None:
+    def display_box(self, text: str, color: int | None = None) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.BORDER_STYLES[self.border_style]
         t = self.THEMES[self.theme]
         bc = t["border"] if color is None else color
-        
+
         lines = []
         for raw in text.split('\n'):
             for wrapped in textwrap.wrap(raw, inner) or ['']:
                 lines.append(f"\033[38;5;{bc}m{v}\033[38;5;{t['text']}m {wrapped:<{inner}}\033[38;5;{bc}m{v}\033[0m")
-                
+
         top = f"\033[1;38;5;{bc}m{tl}{h*(cols-2)}{tr}\033[0m"
         bot = f"\033[1;38;5;{bc}m{bl}{h*(cols-2)}{br}\033[0m"
-        
+
         print(top)
         print('\n'.join(lines))
         print(bot)

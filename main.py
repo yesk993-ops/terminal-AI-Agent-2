@@ -38,11 +38,11 @@ class AnimatedUI:
         self.text_clr = 188
         self.bold_clr = 107
         self.vbar_clr = 37
-        
+
     def get_terminal_width(self) -> int:
         import shutil
         return min(shutil.get_terminal_size().columns, 240)
-    
+
     def _render_bold(self, text: str) -> str:
         import re
         def replace_bold(match):
@@ -58,18 +58,18 @@ class AnimatedUI:
         pad = max(0, width - visible)
         return text + ' ' * pad
 
-    def animate_box(self, text: str, color: int = None, delay: float = 0.005) -> None:
+    def animate_box(self, text: str, color: int | None = None, delay: float = 0.005) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
         tl, h, tr, v, bl, br = self.border_styles[self.current_style]
         bc = self.border_clr if color is None else color
-        
+
         lines = []
         for raw in text.split('\n'):
             for wrapped_raw in self._wrap_text(raw, inner) or ['']:
                 rendered = self._render_bold(wrapped_raw)
                 lines.append(rendered)
-        
+
         border_color = f"1;{self.ef(bc)}"
         print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
         for line in lines:
@@ -93,11 +93,11 @@ class AnimatedUI:
             if delay > 0:
                 time.sleep(delay)
         print(f"\033[{border_color}m{bl}{h*(cols-2)}{br}\033[0m")
-        
+
     def _wrap_text(self, text: str, width: int) -> list:
         import textwrap
         return textwrap.wrap(text, width) or ['']
-    
+
     def cycle_border_style(self) -> None:
         styles = list(self.border_styles.keys())
         idx = (styles.index(self.current_style) + 1) % len(styles)
@@ -111,29 +111,29 @@ def main():
         print("Get a key at: https://build.nvidia.com/explore")
         sys.exit(1)
 
-    log = get_logger(__name__)
+    _log = get_logger(__name__)
     animated_ui = AnimatedUI()
-    
+
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
         # Inline mode - direct execution
         agent = TellAgent()
-        
+
         query = sys.argv[2].lower()
-        
+
         if query.startswith("do "):
             task = sys.argv[2][3:].strip()
             action, value = agent.commands.execute(task)
-            
+
             if action != "ai":
                 animated_ui.animate_box(value)
                 print()
                 return
-                
+
             agent.add_message("user", task)
             coding_prompt = [{"role": "system", "content": CODING_PROMPT}]
             messages = coding_prompt + [{"role": "user", "content": task}]
             response = agent.api.generate_response(messages)
-            
+
             # Parse and execute WRITE: and EXECUTE: directives
             results = agent._run_commands(response)
             if results:
@@ -142,15 +142,15 @@ def main():
             else:
                 animated_ui.animate_box(response)
                 print()
-            
+
             agent.add_message("assistant", response)
-            
+
         elif query in ("history", "hist", "help", "commands", "border", "reset", "clear"):
-            if query == "help" or query == "commands":
+            if query in ("help", "commands"):
                 help_text = agent.get_help()
                 animated_ui.animate_box(help_text)
                 print()
-            elif query == "history" or query == "hist":
+            elif query in ("history", "hist"):
                 hist_text = agent.show_history(10)
                 animated_ui.animate_box(hist_text)
                 print()
@@ -165,7 +165,7 @@ def main():
             elif query == "clear":
                 animated_ui.animate_box("Cleared screen")
                 print()
-            
+
         else:
             # Try local command detection first
             local_fn = agent.commands.detect_local(sys.argv[2])
@@ -177,12 +177,11 @@ def main():
                 response = agent.process_query(sys.argv[2])
                 animated_ui.animate_box(response)
                 print()
-        
+
         return
-    
+
     # Full interactive mode
     agent = TellAgent()
     agent.run()
 if __name__ == "__main__":
-    import time
     main()

@@ -1,3 +1,4 @@
+"""Query complexity analysis and tiered system prompt selection."""
 import re
 
 SIMPLICITY_MARKERS = [

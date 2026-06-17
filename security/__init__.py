@@ -1,3 +1,4 @@
+"""Security manager — path validation, dangerous command detection, safe execution."""
 import os
 import re
 import platform
@@ -21,7 +22,7 @@ class SecurityManager:
                 if real_path.startswith(allowed_real + os.sep) or real_path == allowed_real:
                     return True
             return False
-        except Exception:
+        except (OSError, AttributeError):
             return False
 
     def is_dangerous(self, cmd: str) -> bool:
@@ -63,7 +64,7 @@ class SecurityManager:
             return "BLOCKED: path too long (max 1000 characters)"
         if len(content) > self.max_file_size:
             return f"BLOCKED: file too large (max {self.max_file_size//1024}KB)"
-            
+
         abs_path = os.path.abspath(os.path.expanduser(path))
         try:
             os.makedirs(os.path.dirname(abs_path) or '.', exist_ok=True)
@@ -81,7 +82,7 @@ class SecurityManager:
         # Input length validation to prevent DoS
         if len(cmd) > 10000:
             return "BLOCKED: command too long (max 10000 characters)"
-            
+
         try:
             shell = ["cmd", "/c", cmd] if IS_WINDOWS else ["sh", "-c", cmd]
             import subprocess

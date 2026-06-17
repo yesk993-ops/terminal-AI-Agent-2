@@ -1,11 +1,13 @@
-import platform
+"""Local system commands — disk, memory, processes, file listing, and more."""
 import os
-import psutil
+import platform
 import shutil
 import subprocess
 import time
-from typing import Dict, Any, Tuple, Callable
 from pathlib import Path
+from typing import Dict, Any, Tuple, Callable
+
+import psutil
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -87,27 +89,30 @@ class LocalCommands:
         q = query.lower().strip().strip("?.")
         if q in self.command_map:
             return self.command_map[q]
-            
+
         if q in ("exit", "quit", "clear", "reset", ""):
             return None
-            
+
         words = set(q.split())
-        # Check for direct keyword matches (even in long queries)
-        for kw in self.command_map:
-            if kw in words:
-                return self.command_map[kw]
-                
-        # Check for phrase matches (even in long queries)
+
+        # Check phrase matches first (more specific, safe for any query length)
         for phrase, key in self.phrase_map.items():
             if phrase in q:
                 return self.command_map[key]
+
+        # Keyword matches only for short queries (likely direct commands, not natural language)
+        if len(words) <= 3:
+            for kw, fn in self.command_map.items():
+                if kw in words:
+                    return fn
+
         return None
 
     def execute(self, query: str) -> Tuple[str, Any]:
         local = self.detect_local(query)
         if local:
             return ("local", local())
-            
+
         result = self._safe_execute(query)
         if "BLOCKED" not in result and "[Exit code:" not in result:
             return ("shell", result)
@@ -138,7 +143,7 @@ class LocalCommands:
                 b = datetime.datetime.fromtimestamp(psutil.boot_time())
                 d = datetime.datetime.now() - b
                 return f"Up {d.days}d {d.seconds//3600}h {(d.seconds//60)%60}m"
-            except Exception:
+            except (AttributeError, ImportError, ValueError):
                 return self._safe_execute("wmic os get lastbootuptime")
         return self._safe_execute("uptime")
 
