@@ -37,6 +37,12 @@ class TerminalUI:
         t = self.THEMES[self.theme]
         bc = t["border"] if color is None else color
 
+        if self.border_style == "clean":
+            for raw in text.split('\n'):
+                for wrapped in textwrap.wrap(raw, cols) or ['']:
+                    print(wrapped)
+            return
+
         lines = []
         for raw in text.split('\n'):
             for wrapped in textwrap.wrap(raw, inner) or ['']:
@@ -60,3 +66,5 @@ class TerminalUI:
     def display_prompt(self, text: str = "❯") -> None:
         t = self.THEMES[self.theme]
         print(f"\033[38;5;{t['prompt']}m{text}\033[0m", end=" ")
+
+

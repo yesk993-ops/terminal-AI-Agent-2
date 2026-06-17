@@ -59,6 +59,10 @@ class AnimatedUI:
         pad = max(0, width - visible)
         return text + ' ' * pad
 
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        return re.sub(r'\033\[[0-9;]*m', '', text)
+
     def animate_box(self, text: str, color: int | None = None, delay: float = 0.005) -> None:
         cols = self.get_terminal_width()
         inner = cols - 4
@@ -70,6 +74,14 @@ class AnimatedUI:
             for wrapped_raw in self._wrap_text(raw, inner) or ['']:
                 rendered = self._render_bold(wrapped_raw)
                 lines.append(rendered)
+
+        if self.current_style == "clean":
+            for line in lines:
+                sys.stdout.write(line + "\n")
+                sys.stdout.flush()
+                if delay > 0:
+                    time.sleep(delay)
+            return
 
         border_color = f"1;{self.ef(bc)}"
         print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
