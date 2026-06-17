@@ -1,6 +1,7 @@
 """Security manager — path validation, dangerous command detection, safe execution."""
 import os
 import re
+import subprocess
 import platform
 from typing import List, Dict, Any
 from pathlib import Path
@@ -85,7 +86,6 @@ class SecurityManager:
 
         try:
             shell = ["cmd", "/c", cmd] if IS_WINDOWS else ["sh", "-c", cmd]
-            import subprocess
             # Sanitize environment - remove dangerous vars
             safe_env = {k: v for k, v in os.environ.items()
                         if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",

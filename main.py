@@ -14,6 +14,9 @@ This is the entry point for the tell AI agent. It uses a modular structure:
 import os
 import sys
 import time
+import re
+import shutil
+import textwrap
 from pathlib import Path
 
 # Add current directory to Python path
@@ -40,17 +43,14 @@ class AnimatedUI:
         self.vbar_clr = 37
 
     def get_terminal_width(self) -> int:
-        import shutil
         return min(shutil.get_terminal_size().columns, 240)
 
     def _render_bold(self, text: str) -> str:
-        import re
         def replace_bold(match):
             return f"\033[1;{self.ef(self.bold_clr)}m{match.group(1)}\033[0m\033[{self.ef(self.text_clr)}m"
         return re.sub(r'\*\*(.+?)\*\*', replace_bold, text)
 
     def _visible_len(self, text: str) -> int:
-        import re
         return len(re.sub(r'\033\[[0-9;]*m', '', text))
 
     def _pad_ansi(self, text: str, width: int) -> str:
@@ -78,10 +78,9 @@ class AnimatedUI:
             padding = inner - visible_len
             if padding < 0:
                 padding = 0
-            import re as _re
-            segments = _re.split(r'(\033\[[0-9;]*m)', line)
+            segments = re.split(r'(\033\[[0-9;]*m)', line)
             for seg in segments:
-                if _re.match(r'\033\[', seg):
+                if re.match(r'\033\[', seg):
                     sys.stdout.write(seg)
                 else:
                     for ch in seg:
@@ -95,7 +94,6 @@ class AnimatedUI:
         print(f"\033[{border_color}m{bl}{h*(cols-2)}{br}\033[0m")
 
     def _wrap_text(self, text: str, width: int) -> list:
-        import textwrap
         return textwrap.wrap(text, width) or ['']
 
     def cycle_border_style(self) -> None:

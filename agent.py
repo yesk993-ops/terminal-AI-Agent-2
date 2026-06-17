@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""
-tell - AI coding & system agent (legacy wrapper)
-Delegates all functionality to the modular core modules.
-"""
+"""tell - AI coding & system agent (legacy wrapper)."""
 import os
 import sys
+import re
 import shutil
 import textwrap
 import time
@@ -19,54 +17,18 @@ from core import TellAgent
 from core.prompts import CODING_PROMPT, QUERY_PROMPT
 from ui import TerminalUI
 
+ui = TerminalUI()
 IS_WINDOWS = __import__('platform').system() == "Windows"
-
-BORDER_STYLES = TerminalUI.BORDER_STYLES
-
-def term_width():
-    return min(shutil.get_terminal_size().columns, 240)
-
-_border_style = os.environ.get("TELL_BORDER", "rounded")
-if _border_style not in BORDER_STYLES:
-    _border_style = "rounded"
-
-def _auto_bold(text):
-    lines = text.split('\n')
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if (stripped.endswith(':') and len(stripped) < 80
-            and not stripped.startswith('-') and not stripped.startswith(tuple(str(i) for i in range(10)))
-            and '**' not in stripped and stripped.count(' ') >= 1):
-            if stripped[0].isupper() and '.' not in stripped:
-                line = line.replace(stripped, f'**{stripped}**')
-        result.append(line)
-    return '\n'.join(result)
 
 
 def box(text, color=96):
-    import re as _re
-    cols = term_width()
-    inner = cols - 4
-    tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
-    lines = []
-    for raw in text.split('\n'):
-        for wrapped in textwrap.wrap(raw, inner) or ['']:
-            rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', wrapped)
-            visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', wrapped))
-            padding = inner - visible_len
-            if padding < 0:
-                padding = 0
-            lines.append(f"\033[{color}m{v}\033[97m {rendered}{' ' * padding}\033[{color}m{v}\033[0m")
-    top = f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m"
-    bot = f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m"
-    return top + '\n' + '\n'.join(lines) + '\n' + bot
+    return ui.display_box(text, color)
 
 
 def typewrite(text, color=96, delay=0.0003):
-    cols = term_width()
+    cols = min(shutil.get_terminal_size().columns, 240)
     inner = cols - 4
-    tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
+    tl, h, tr, v, bl, br = ui.BORDER_STYLES[ui.border_style]
     lines_out = []
     for raw in text.split('\n'):
         for wrapped in textwrap.wrap(raw, inner) or ['']:
@@ -84,20 +46,18 @@ def typewrite(text, color=96, delay=0.0003):
 
 
 def animated_box(text, color=96, delay=0.02):
-    import re as _re
-    cols = term_width()
+    cols = min(shutil.get_terminal_size().columns, 240)
     inner = cols - 4
-    tl, h, tr, v, bl, br = BORDER_STYLES[_border_style]
+    tl, h, tr, v, bl, br = ui.BORDER_STYLES[ui.border_style]
     lines = []
     for raw in text.split('\n'):
         for wrapped in textwrap.wrap(raw, inner) or ['']:
             lines.append(wrapped)
-    border_color = f"1;{color}"
-    print(f"\033[{border_color}m{tl}{h*(cols-2)}{tr}\033[0m")
+    print(f"\033[1;{color}m{tl}{h*(cols-2)}{tr}\033[0m")
     for line in lines:
         sys.stdout.write(f"\033[{color}m{v}\033[97m ")
-        rendered = _re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', line)
-        visible_len = len(_re.sub(r'\033\[[0-9;]*m', '', line))
+        rendered = re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', line)
+        visible_len = len(re.sub(r'\033\[[0-9;]*m', '', line))
         padding = inner - visible_len
         if padding < 0:
             padding = 0
@@ -108,13 +68,25 @@ def animated_box(text, color=96, delay=0.02):
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
 
+def _auto_bold(text):
+    lines = text.split('\n')
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if (stripped.endswith(':') and len(stripped) < 80
+            and not stripped.startswith('-') and not stripped.startswith(tuple(str(i) for i in range(10)))
+            and '**' not in stripped and stripped.count(' ') >= 1):
+            if stripped[0].isupper() and '.' not in stripped:
+                line = line.replace(stripped, f'**{stripped}**')
+        result.append(line)
+    return '\n'.join(result)
+
+
 def inline_mode(query):
     if len(query) > 10000:
         print(box("Input too long (max 10000 characters)", 91))
         return
 
-    import sys as _sys
-    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     agent = TellAgent()
 
     if query.lower().startswith("do "):
@@ -164,7 +136,7 @@ def main():
     msgs = [{"role": "system", "content": QUERY_PROMPT}]
     while True:
         try:
-            u = input("\033[94m❯\033[0m ").strip()
+            u = input("\033[94m\u276f\033[0m ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nBye!"); break
 
@@ -176,15 +148,12 @@ def main():
         if u.lower() == "clear": print("\033[2J\033[H", end=""); continue
         if u.lower() in ("help","commands"):
             cmds = "\n".join(f"  {k}" for k in sorted(agent.commands.get_command_map()))
-            print(f"\n{box(f'Built-in commands:\\n{cmds}', 92)}")
+            print(f"\n{box(f'Built-in commands:\n{cmds}', 92)}")
             print(f"\n{box('do <task> - coding/system tasks  |  border  |  reset  |  clear  |  help', 92)}\n")
             continue
         if u.lower() == "border":
-            global _border_style
-            keys = list(BORDER_STYLES)
-            idx = (keys.index(_border_style) + 1) % len(keys)
-            _border_style = keys[idx]
-            print(f"\n{box(f'Border style: {_border_style}', 97)}\n")
+            ui.cycle_border_style()
+            print(f"\n{box(f'Border style: {ui.border_style}', 97)}\n")
             continue
         if u.lower() == "reset":
             msgs = [{"role":"system","content":QUERY_PROMPT}]
@@ -233,7 +202,7 @@ def main():
             if m.get("role") == "system":
                 content = m.get("content", "")
                 if len(content) > 50000:
-                    m["content"] = content[:50000] + "\n[Truncated for security]"
+                    m["content"] = content[:50000] + "\n[Truncated]"
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import json
+import socket
 import subprocess
 import time
 import platform
@@ -20,6 +21,7 @@ from security import SecurityManager
 from logger import get_logger
 from . import analyzer
 from .prompts import CODING_PROMPT
+from .cache import ResponseCache
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -52,13 +54,14 @@ class TellAgent:
 
         self.message_history: List[Dict[str, str]] = []
         self.history: Optional[CommandHistory] = None
+        self.cache = ResponseCache(self.config)
 
         if self.config.get("behavior.enable_command_history"):
             from .command_history import CommandHistory
             self.history = CommandHistory(max_size=self.config.get("behavior.max_history_size", 100))
 
         # Evict expired cache entries on startup
-        self._evict_cache()
+        self.cache.evict()
         self.log.info("TellAgent initialized successfully")
 
     def add_message(self, role: str, content: str) -> None:
@@ -107,13 +110,13 @@ class TellAgent:
         messages.insert(0, system_prompt)
 
         if self.config.get("performance.enable_caching"):
-            cached_response = self._check_cache(query)
+            cached_response = self.cache.get(query)
             if cached_response:
                 raw_response = cached_response
             else:
                 max_tokens = analyzer.get_max_tokens(level)
                 raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
-                self._cache_response(query, raw_response)
+                self.cache.set(query, raw_response)
         else:
             max_tokens = analyzer.get_max_tokens(level)
             raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
@@ -160,43 +163,6 @@ class TellAgent:
         for chunk in self.api.generate_stream(messages, max_tokens=max_tokens):
             full_text += chunk
             yield full_text
-
-    def _check_cache(self, query: str) -> Optional[str]:
-        cache_file = Path(".tell_cache.json")
-        if not cache_file.exists():
-            return None
-
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-
-            if query in cache:
-                item = cache[query]
-                if time.time() - item["timestamp"] < self.config.get("performance.cache_ttl", 3600):
-                    return item["response"]
-        except (KeyError, json.JSONDecodeError, OSError):
-            pass
-
-        return None
-
-    def _cache_response(self, query: str, response: str) -> None:
-        cache_file = Path(".tell_cache.json")
-
-        try:
-            cache_data = {}
-            if cache_file.exists():
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-
-            cache_data[query] = {
-                "response": response,
-                "timestamp": time.time()
-            }
-
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, indent=2)
-        except (OSError, json.JSONDecodeError):
-            pass
 
     def _run_commands(self, text: str) -> str:
         """Parse and execute WRITE: and EXECUTE: directives from AI response.
@@ -292,7 +258,6 @@ class TellAgent:
 
                 # Fix port conflicts
                 if 'http.server' in cmd:
-                    import socket
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     try:
                         s.bind(('', 8000))
@@ -367,24 +332,6 @@ class TellAgent:
                 if path:
                     created_files.append(os.path.abspath(path))
         return results, created_files
-
-    def _evict_cache(self) -> None:
-        cache_file = Path(".tell_cache.json")
-        if not cache_file.exists():
-            return
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-            ttl = self.config.get("performance.cache_ttl", 3600)
-            now = time.time()
-            expired = [k for k, v in cache.items() if now - v.get("timestamp", 0) > ttl]
-            for k in expired:
-                del cache[k]
-            if expired:
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache, f, indent=2)
-        except (KeyError, json.JSONDecodeError, OSError):
-            pass
 
     def get_help(self) -> str:
         commands = sorted(list(self.commands.get_command_map().keys()))

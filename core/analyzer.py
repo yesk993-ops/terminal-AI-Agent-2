@@ -35,6 +35,7 @@ TECHNICAL_TERMS = [
     "kubernetes", "aws", "azure", "gcp", "devops", "ci/cd", "pipeline",
     "algorithm", "data structure", "tree", "graph", "hash", "heap",
     "stack", "queue", "array", "linked list", "binary", "recursion",
+    "theorem",
     "dynamic programming", "concurrency", "parallel", "async",
     "thread", "process", "mutex", "semaphore", "deadlock",
     "encryption", "authentication", "authorization", "oauth",
