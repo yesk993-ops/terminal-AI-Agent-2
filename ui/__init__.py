@@ -12,6 +12,7 @@ class TerminalUI:
         "classic": ("╔", "═", "╗", "║", "╚", "╝"),
         "sharp":   ("┌", "─", "┐", "│", "└", "┘"),
         "thick":   ("┏", "━", "┓", "┃", "┗", "┛"),
+        "clean":   (" ", " ", " ", " ", " ", " "),
     }
     THEMES = {
         "eye-friendly": {"border": 37, "text": 188, "prompt": 130, "accent": 107},

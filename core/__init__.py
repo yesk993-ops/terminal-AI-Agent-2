@@ -22,6 +22,7 @@ from logger import get_logger
 from . import analyzer
 from .prompts import CODING_PROMPT
 from .cache import ResponseCache
+from ui.highlighter import highlight_response
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -145,6 +146,7 @@ class TellAgent:
                 result.append(line)
             return '\n'.join(result)
         response = _auto_bold(raw_response)
+        response = highlight_response(response)
 
         return response
 
