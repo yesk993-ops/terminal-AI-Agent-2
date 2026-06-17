@@ -21,7 +21,7 @@ from ui import TerminalUI
 from security import SecurityManager
 from logger import get_logger
 from . import analyzer
-from .prompts import CODING_PROMPT
+from .prompts import CODING_PROMPT, DOCUMENT_PROMPT
 from .cache import ResponseCache
 from ui.highlighter import highlight_response
 
@@ -102,6 +102,40 @@ class TellAgent:
         result = analyzer.analyze(query)
         level = result["level"]
 
+        # Detect document/SOP creation intent
+        doc_keywords = [
+            "create document", "create doc", "create sop",
+            "write document", "write doc", "write sop",
+            "generate document", "generate doc", "generate sop",
+            "make a document", "make a doc", "make an sop",
+            "document about", "sop for", "sop on",
+            "create a report", "write a report",
+        ]
+        is_doc_request = any(kw in query.lower() for kw in doc_keywords)
+
+        if is_doc_request:
+            messages = [m for m in messages if m.get("role") != "system"]
+            messages.insert(0, {"role": "system", "content": DOCUMENT_PROMPT})
+            raw_response = self.api.generate_response(messages)
+            # Check if AI used WRITE: directives
+            if re.search(r'^WRITE:', raw_response, re.MULTILINE):
+                results = self._run_commands(raw_response)
+                if results:
+                    return results
+            # Auto-save as markdown if AI didn't use WRITE: directive
+            topic = query.lower()
+            for prefix in ["create document", "create doc", "create sop",
+                           "write document", "write doc", "write sop",
+                           "generate document", "generate doc", "generate sop",
+                           "make a document", "make a doc", "make an sop",
+                           "create a report", "write a report",
+                           "document about", "sop for", "sop on"]:
+                topic = topic.replace(prefix, "").strip()
+            topic = re.sub(r'[^a-z0-9]+', '-', topic).strip('-')[:50]
+            filename = f"{topic or 'document'}-guide.md"
+            result = self.security.safe_write(filename, raw_response)
+            return f"{result}\n\n{raw_response}"
+
         if level == "complex":
             self.log.info(f"Using complex prompt for query ({result['score']} pts): {result['factors']}")
 
@@ -122,6 +156,11 @@ class TellAgent:
         else:
             max_tokens = analyzer.get_max_tokens(level)
             raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
+
+        # Check for WRITE: directives in any response and execute them
+        write_results = self._run_commands(raw_response)
+        if write_results:
+            return write_results
 
         def _auto_bold(text):
             lines = text.split('\n')
@@ -243,16 +282,10 @@ class TellAgent:
                     content = '\n'.join(content_lines_clean)
 
                     add_step(f"Creating file: {path} ({len(content)} bytes)")
-                    # Write the file
-                    try:
-                        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-                        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                        with os.fdopen(fd, 'w') as fh:
-                            fh.write(content)
-                        results.append(f"Created: {path} ({len(content)} bytes)")
+                    result = self.security.safe_write(path, content)
+                    results.append(result)
+                    if result.startswith("Created:"):
                         created_files.append(os.path.abspath(path))
-                    except Exception as e:
-                        results.append(f"Error creating {path}: {e}")
                 i -= 1
 
             elif line.startswith('EXECUTE:'):
@@ -452,20 +485,68 @@ class TellAgent:
                     self.ui.display_box(local_fn())
                     print()
                 else:
-                    self.add_message("user", user_input)
-                    # Show animated spinner while waiting for response
-                    spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
-                    sys.stdout.write("\033[?25l")  # hide cursor
-                    spinner_color = self.ui.THEMES[self.ui.theme]['prompt']
-                    sys.stdout.write(f"\033[38;5;{spinner_color}m{next(spinner)} Thinking...\033[0m")
-                    sys.stdout.flush()
-                    full = ""
-                    for partial in self.process_query_stream(user_input):
-                        full = partial
-                    sys.stdout.write(f"\r\033[K\033[?25h")  # clear spinner, show cursor
-                    self.add_message("assistant", full)
-                    print()
-                    self.ui.display_box(full)
+                    # Detect document/SOP creation intent
+                    doc_keywords = [
+                        "create document", "create doc", "create sop",
+                        "write document", "write doc", "write sop",
+                        "generate document", "generate doc", "generate sop",
+                        "make a document", "make a doc", "make an sop",
+                        "document about", "sop for", "sop on",
+                        "create a report", "write a report",
+                    ]
+                    is_doc_request = any(kw in user_input.lower() for kw in doc_keywords)
+
+                    if is_doc_request:
+                        doc_prompt = [{"role": "system", "content": DOCUMENT_PROMPT}]
+                        messages = doc_prompt + [{"role": "user", "content": user_input}]
+
+                        spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+                        sys.stdout.write("\033[?25l")
+                        spinner_color = self.ui.THEMES[self.ui.theme]['prompt']
+                        sys.stdout.write(f"\033[38;5;{spinner_color}m{next(spinner)} Generating document...\033[0m")
+                        sys.stdout.flush()
+                        response = self.api.generate_response(messages)
+                        sys.stdout.write(f"\r\033[K\033[?25h")
+
+                        # Check if AI used WRITE: directives
+                        if re.search(r'^WRITE:', response, re.MULTILINE):
+                            results = self._run_commands(response)
+                            self.add_message("user", user_input)
+                            self.add_message("assistant", response)
+                            print()
+                            self.ui.display_box(results or response)
+                        else:
+                            # Auto-save as markdown if AI didn't use WRITE:
+                            topic = user_input.lower()
+                            for prefix in ["create document", "create doc", "create sop",
+                                           "write document", "write doc", "write sop",
+                                           "generate document", "generate doc", "generate sop",
+                                           "make a document", "make a doc", "make an sop",
+                                           "create a report", "write a report",
+                                           "document about", "sop for", "sop on"]:
+                                topic = topic.replace(prefix, "").strip()
+                            topic = re.sub(r'[^a-z0-9]+', '-', topic).strip('-')[:50]
+                            filename = f"{topic or 'document'}-guide.md"
+                            save_result = self.security.safe_write(filename, response)
+                            self.add_message("user", user_input)
+                            self.add_message("assistant", response)
+                            print()
+                            self.ui.display_box(f"{save_result}\n\n{response}")
+                    else:
+                        self.add_message("user", user_input)
+                        # Show animated spinner while waiting for response
+                        spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+                        sys.stdout.write("\033[?25l")  # hide cursor
+                        spinner_color = self.ui.THEMES[self.ui.theme]['prompt']
+                        sys.stdout.write(f"\033[38;5;{spinner_color}m{next(spinner)} Thinking...\033[0m")
+                        sys.stdout.flush()
+                        full = ""
+                        for partial in self.process_query_stream(user_input):
+                            full = partial
+                        sys.stdout.write(f"\r\033[K\033[?25h")  # clear spinner, show cursor
+                        self.add_message("assistant", full)
+                        print()
+                        self.ui.display_box(full)
 
 # Keep for backward compatibility
 def main():
