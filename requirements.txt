@@ -1,1 +1,2 @@
-# No dependencies required for this project
+requests>=2.25
+psutil>=5.8

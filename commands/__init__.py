@@ -41,6 +41,9 @@ class LocalCommands:
             "scan": self._cmd_scan,
             "suid": self._cmd_suid,
             "security": self._cmd_security_scan,
+            "ls": self._cmd_ls,
+            "dir": self._cmd_ls,
+            "files": self._cmd_ls,
         }
 
     def _initialize_phrases(self) -> Dict[str, str]:
@@ -69,6 +72,15 @@ class LocalCommands:
             "setuid files": "suid",
             "quick scan": "scan",
             "system scan": "scan",
+            "list files": "ls",
+            "files in": "ls",
+            "current folder": "ls",
+            "current directory": "ls",
+            "directory listing": "ls",
+            "what's here": "ls",
+            "what is here": "ls",
+            "show files": "ls",
+            "folder contents": "ls",
         }
 
     def detect_local(self, query: str) -> Any:
@@ -134,6 +146,11 @@ class LocalCommands:
         if IS_WINDOWS:
             return self._safe_execute("echo %date% %time%")
         return self._safe_execute("date")
+
+    def _cmd_ls(self) -> str:
+        if IS_WINDOWS:
+            return self._safe_execute("dir")
+        return self._safe_execute("ls -la --color=never")
 
     def _cmd_pwd(self) -> str:
         if IS_WINDOWS:

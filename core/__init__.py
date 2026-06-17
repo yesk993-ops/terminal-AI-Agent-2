@@ -16,6 +16,7 @@ from ui import TerminalUI
 from security import SecurityManager
 from logger import get_logger
 from . import analyzer
+from .prompts import CODING_PROMPT
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -54,6 +55,8 @@ class TellAgent:
         else:
             self.history = None
             
+        # Evict expired cache entries on startup
+        self._evict_cache()
         self.log.info("TellAgent initialized successfully")
 
     def add_message(self, role: str, content: str) -> None:
@@ -140,6 +143,23 @@ class TellAgent:
         response = _auto_bold(raw_response)
 
         return response
+
+    def process_query_stream(self, query: str):
+        """Process query with streaming response generator.
+        Yields progressively larger text chunks as they arrive."""
+        messages = self.get_messages()
+        result = analyzer.analyze(query)
+        level = result["level"]
+        system_prompt = self._get_dynamic_system_prompt(query)
+        messages = [m for m in messages if m.get("role") != "system"]
+        messages.insert(0, system_prompt)
+        max_tokens = analyzer.get_max_tokens(level)
+
+        full_text = ""
+        for chunk in self.api.generate_stream(messages, max_tokens=max_tokens):
+            full_text += chunk
+            import re
+            yield full_text
         
     def _check_cache(self, query: str) -> Optional[str]:
         cache_file = Path(".tell_cache.json")
@@ -344,7 +364,37 @@ class TellAgent:
                     results.append(f"Error installing deps: {e}")
         
         return '\n'.join(results) if results else ''
-        
+
+    def _run_commands_with_files(self, text: str):
+        """Run commands and return (results_str, created_files_list)."""
+        results = self._run_commands(text)
+        created_files = []
+        import re
+        for line in results.split('\n'):
+            if line.strip().startswith('Created:'):
+                path = line.strip()[8:].strip()
+                if path:
+                    created_files.append(os.path.abspath(path))
+        return results, created_files
+
+    def _evict_cache(self) -> None:
+        cache_file = Path(".tell_cache.json")
+        if not cache_file.exists():
+            return
+        try:
+            with open(cache_file, 'r') as f:
+                cache = json.load(f)
+            ttl = self.config.get("performance.cache_ttl", 3600)
+            now = time.time()
+            expired = [k for k, v in cache.items() if now - v.get("timestamp", 0) > ttl]
+            for k in expired:
+                del cache[k]
+            if expired:
+                with open(cache_file, 'w') as f:
+                    json.dump(cache, f, indent=2)
+        except Exception:
+            pass
+
     def get_help(self) -> str:
         commands = sorted(list(self.commands.get_command_map().keys()))
         help_text = "Built-in commands:\n"
@@ -438,106 +488,7 @@ class TellAgent:
                 
                 if result and "ai" in result:
                     # Use coding-specific system prompt for "do" tasks
-                    coding_prompt = [{"role": "system", "content": """You are an expert coding agent — a real-time coding agent like Cursor or Codex. You build complete projects, write production code, and follow instructions precisely.
-
-FORMATTING RULES:
-- NEVER use markdown: no **, no *, no ##, no ```, no |, no ---
-- Use PLAIN TEXT ONLY
-- Use backticks only for actual code in explanations
-- Use WRITE: and EXECUTE: directives as shown below
-
-ACTION DIRECTIVES:
-WRITE: relative/path/to/file
-<file content here — complete, working code>
-
-EXECUTE: shell command (one line only)
-
-Chain multiple WRITE: and EXECUTE: directives. Example:
-WRITE: app.py
-<code>
-WRITE: requirements.txt
-<code>
-EXECUTE: pip install -r requirements.txt
-EXECUTE: python app.py
-
-CODE QUALITY STANDARDS (MUST FOLLOW):
-
-1. CODE STRUCTURE:
-- Organize code into clear, readable, maintainable structure
-- Use proper functions, classes, and modules
-- Follow single responsibility principle
-- Separate concerns (UI, logic, data)
-
-2. CODE STYLE:
-- Follow PEP 8 (Python), ESLint (JS), or language-specific conventions
-- Consistent indentation (4 spaces for Python, 2 for JS)
-- Meaningful naming: variables, functions, classes
-- Proper docstrings and comments
-
-3. CODE QUALITY:
-- Write efficient, scalable, optimized code
-- Handle edge cases and errors
-- Use type hints where appropriate
-- Avoid code duplication (DRY principle)
-
-4. CODE ACCURACY:
-- Write correct, working code — test mentally before outputting
-- Include error handling
-- Validate inputs
-- Handle exceptions gracefully
-
-5. CODE READABILITY:
-- Clear, descriptive variable names
-- Meaningful function names that describe what they do
-- Comments for complex logic
-- Consistent formatting
-
-6. CODE MAINTAINABILITY:
-- Easy to modify and extend
-- Loose coupling between components
-- High cohesion within modules
-- Document assumptions and dependencies
-
-7. CODE GENERATION:
-- Generate code similar in quality to a human expert
-- Adapt to changing requirements
-- Integrate with existing code when specified
-
-PROJECT CREATION WORKFLOW:
-1. Understand the requirement
-2. Plan the project structure
-3. Create all files with complete, working code
-4. Install dependencies
-5. Run and test the project
-6. Show the user how to use it
-
-MULTI-FILE PROJECTS:
-When creating a project, ALWAYS create:
-- Main application file(s)
-- Configuration file (requirements.txt, package.json, etc.)
-- README.md with setup instructions
-- .gitignore
-- Test files if applicable
-
-FRAMEWORKS AND TOOLS:
-- Python: Flask, Django, FastAPI, asyncio, requests, sqlite3
-- JavaScript: Node.js, Express, React, Next.js
-- HTML/CSS: Responsive design, Tailwind, Bootstrap
-- Databases: SQLite, PostgreSQL, MongoDB
-- DevOps: Docker, docker-compose, shell scripts
-- Testing: pytest, unittest, jest
-
-SYSTEM TASKS:
-- Detect OS (Linux/Mac/Windows) and use appropriate commands
-- Install packages using the right package manager
-- Run projects and show output
-- NEVER run destructive commands
-
-OUTPUT:
-- Complete, production-ready code
-- All files needed to run the project
-- Clear setup instructions
-- Working example with actual output"""}]
+                    coding_prompt = [{"role": "system", "content": CODING_PROMPT}]
                     messages = coding_prompt + [{"role": "user", "content": task}]
                     response = self.api.generate_response(messages)
                     
@@ -557,12 +508,19 @@ OUTPUT:
                     self.ui.display_box(value)
                     print()
             else:
-                response = self.process_query(user_input)
-                self.add_message("user", user_input)
-                self.add_message("assistant", response)
-                
-                self.ui.display_box(response)
-                print()
+                # Try local command detection first
+                local_fn = self.commands.detect_local(user_input)
+                if local_fn:
+                    self.ui.display_box(local_fn())
+                    print()
+                else:
+                    self.add_message("user", user_input)
+                    full = ""
+                    for partial in self.process_query_stream(user_input):
+                        full = partial
+                    self.add_message("assistant", full)
+                    self.ui.display_box(full)
+                    print()
 
 # Keep for backward compatibility
 def main():

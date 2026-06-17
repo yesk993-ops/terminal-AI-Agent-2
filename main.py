@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core import TellAgent
+from core.prompts import CODING_PROMPT
 from logger import get_logger
 
 class AnimatedUI:
@@ -105,12 +106,16 @@ class AnimatedUI:
 
 def main():
     """Main entry point"""
+    if not os.environ.get("NVIDIA_API_KEY"):
+        print("Error: NVIDIA_API_KEY is not set.")
+        print("Get a key at: https://build.nvidia.com/explore")
+        sys.exit(1)
+
     log = get_logger(__name__)
     animated_ui = AnimatedUI()
     
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
         # Inline mode - direct execution
-        from core import TellAgent
         agent = TellAgent()
         
         query = sys.argv[2].lower()
@@ -125,8 +130,7 @@ def main():
                 return
                 
             agent.add_message("user", task)
-            # Use coding-specific system prompt
-            coding_prompt = [{"role": "system", "content": "You are a coding agent. ALWAYS use these directives:\n\nWRITE: filename\n<file content here>\n\nEXECUTE: command\n\nCRITICAL: Start with WRITE: then filename. Then code. Then EXECUTE:.\nDo NOT use markdown or code blocks."}]
+            coding_prompt = [{"role": "system", "content": CODING_PROMPT}]
             messages = coding_prompt + [{"role": "user", "content": task}]
             response = agent.api.generate_response(messages)
             
@@ -163,10 +167,16 @@ def main():
                 print()
             
         else:
-            agent.add_message("user", sys.argv[2])
-            response = agent.process_query(sys.argv[2])
-            animated_ui.animate_box(response)
-            print()
+            # Try local command detection first
+            local_fn = agent.commands.detect_local(sys.argv[2])
+            if local_fn:
+                animated_ui.animate_box(local_fn())
+                print()
+            else:
+                agent.add_message("user", sys.argv[2])
+                response = agent.process_query(sys.argv[2])
+                animated_ui.animate_box(response)
+                print()
         
         return
     
