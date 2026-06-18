@@ -30,9 +30,7 @@
   },
   "security": {
     "allowed_write_dirs": [
-      ".",
-      "~",
-      "/tmp"
+      "."
     ],
     "max_file_size": 1048576,
     "dangerous_commands": [

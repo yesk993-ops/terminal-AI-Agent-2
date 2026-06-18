@@ -3,7 +3,6 @@ import os
 import re
 import sys
 import json
-import socket
 import subprocess
 import time
 import itertools
@@ -319,42 +318,9 @@ class TellAgent:
                 cmd = line[8:].strip()
                 cmd = cmd.strip('`')
 
-                # Fix port conflicts
-                if 'http.server' in cmd:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    try:
-                        s.bind(('', 8000))
-                        s.close()
-                    except OSError:
-                        cmd = "python3 -m http.server 8080"
-                    finally:
-                        try:
-                            s.close()
-                        except OSError:
-                            pass
-
-                # Skip dangerous commands
-                dangerous = ['rm -rf', 'mkfs', 'dd if=', 'shutdown', 'reboot', '> /dev/']
-                if any(d in cmd.lower() for d in dangerous):
-                    add_step(f"BLOCKED: {cmd[:50]}... is dangerous")
-                else:
-                    add_step(f"Running: {cmd}")
-                    try:
-                        r = subprocess.run(
-                            ['sh', '-c', cmd],
-                            capture_output=True, text=True, timeout=120,
-                            env={k: v for k, v in os.environ.items()
-                                 if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV")},
-                            check=False
-                        )
-                        output = r.stdout.strip()
-                        if r.stderr:
-                            output += "\n" + r.stderr.strip() if output else r.stderr.strip()
-                        results.append(f"$ {cmd}\n{output[:2000]}")
-                    except subprocess.TimeoutExpired:
-                        results.append(f"$ {cmd}\nCommand timed out")
-                    except (OSError, ValueError) as e:
-                        results.append(f"$ {cmd}\nError: {e}")
+                result = self.security.safe_execute(cmd, timeout=120)
+                add_step(f"Running: {cmd}")
+                results.append(f"$ {cmd}\n{result[:2000]}")
                 i += 1
                 continue
 
@@ -365,7 +331,9 @@ class TellAgent:
 
         add_step(f"Created {len(created_files)} file(s)")
 
-        # Auto-install dependencies if requirements.txt or package.json was created
+        if not self.config.get("behavior.auto_install_deps", True):
+            return '\n'.join(results) if results else ''
+
         for f in created_files:
             basename = os.path.basename(f)
             if basename == 'requirements.txt':
@@ -375,9 +343,9 @@ class TellAgent:
                         capture_output=True, text=True, timeout=120,
                         check=False
                     )
-                    results.append(f"$ pip install --break-system-packages -r {f}\n{r.stdout[:500]}")
+                    results.append(f"$ pip install --break-system-packages -r {f}\n{self.security.sanitize_output(r.stdout[:500])}")
                 except (OSError, ValueError) as e:
-                    results.append(f"Error installing deps: {e}")
+                    results.append(f"Error installing deps")
             elif basename == 'package.json':
                 try:
                     r = subprocess.run(
@@ -385,9 +353,9 @@ class TellAgent:
                         capture_output=True, text=True, timeout=120,
                         check=False
                     )
-                    results.append(f"$ npm install\n{r.stdout[:500]}")
+                    results.append(f"$ npm install\n{self.security.sanitize_output(r.stdout[:500])}")
                 except (OSError, ValueError) as e:
-                    results.append(f"Error installing deps: {e}")
+                    results.append(f"Error installing deps")
 
         return '\n'.join(results) if results else ''
 

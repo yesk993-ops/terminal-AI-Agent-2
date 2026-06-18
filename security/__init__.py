@@ -30,31 +30,34 @@ class SecurityManager:
             return False
 
     def is_dangerous(self, cmd: str) -> bool:
-        """Check if command matches dangerous patterns."""
         cmd_lower = cmd.lower().strip()
-        # Normalize whitespace to prevent bypass
         cmd_normalized = re.sub(r'\s+', ' ', cmd_lower)
-        # Check substring matches
+
         for d in self.dangerous_commands:
             if d in cmd_normalized:
                 return True
-        # Check regex patterns for encoded/bypassed commands
+
         dangerous_patterns = [
-            r'\brm\s+-[a-z]*r[a-z]*f',  # rm -rf
-            r'\brm\s+-[a-z]*f[a-z]*r',  # rm -fr
-            r'\bdd\s+if=',              # dd if=
-            r'\bmkfs\b',               # mkfs
-            r'>\s*/dev/sd',            # > /dev/sda
-            r'\bshutdown\b',           # shutdown
-            r'\breboot\b',             # reboot
-            r'\bchmod\s+777',         # chmod 777
-            r'\bcurl\b.*\|\s*bash',   # curl | bash
-            r'\bwget\b.*\|\s*bash',   # wget | bash
-            r'\beval\b',              # eval
-            r'\bexec\b',              # exec
-            r'\bsudo\b',              # sudo
-            r'\bpython\s+-c',         # python -c
-            r'\bpython3\s+-c',        # python3 -c
+            r'\brm\s+-[a-z]*r[a-z]*f',
+            r'\brm\s+-[a-z]*f[a-z]*r',
+            r'\bdd\s+if=',
+            r'\bmkfs\b',
+            r'>\s*/dev/sd',
+            r'\bshutdown\b',
+            r'\breboot\b',
+            r'\bchmod\s+777',
+            r'\bcurl\b.*\|\s*bash',
+            r'\bwget\b.*\|\s*bash',
+            r'\beval\b',
+            r'\bexec\b',
+            r'\bsudo\b',
+            r'\bpython\s+-c',
+            r'\bpython3\s+-c',
+            r'base64\s+-d',
+            r'openssl\s+enc',
+            r'\\x[0-9a-f]{2}.*\\x[0-9a-f]{2}',
+            r'\$\(.*\)',
+            r'`.*`',
         ]
         for pattern in dangerous_patterns:
             if re.search(pattern, cmd_normalized):
@@ -62,24 +65,41 @@ class SecurityManager:
         return False
 
     def safe_write(self, path: str, content: str) -> str:
-        if not self.is_safe_path(path):
-            return f"BLOCKED: cannot write outside allowed directories: {', '.join(self.allowed_dirs)}"
-        # Input length validation
+        abs_path = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+        if not self.is_safe_path(abs_path):
+            return f"BLOCKED: cannot write outside allowed directories"
         if len(path) > 1000:
             return "BLOCKED: path too long (max 1000 characters)"
         if len(content) > self.max_file_size:
             return f"BLOCKED: file too large (max {self.max_file_size//1024}KB)"
 
-        abs_path = os.path.abspath(os.path.expanduser(path))
         try:
             os.makedirs(os.path.dirname(abs_path) or '.', exist_ok=True)
-            # Write with restrictive permissions (owner read/write only)
-            fd = os.open(abs_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            fd = os.open(abs_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
             with os.fdopen(fd, 'w') as f:
                 f.write(content)
             return f"Created: {os.path.relpath(abs_path, os.getcwd())} ({len(content)} bytes)"
-        except OSError as e:
-            return f"Error: {e}"
+        except OSError:
+            return "Error: write failed"
+
+    SENSITIVE_PATTERNS = [
+        (r'(?i)(BEGIN\s+(RSA|DSA|EC|OPENSSH|PRIVATE)\s+KEY)', 'BEGIN PRIVATE KEY'),
+        (r'(nvapi-[a-zA-Z0-9_-]{20,})', 'nvapi-***'),
+        (r'(sk-or-[a-zA-Z0-9]{20,})', 'sk-or-***'),
+        (r'(ghp_[a-zA-Z0-9]{36})', 'ghp_***'),
+        (r'(gho_[a-zA-Z0-9]{36})', 'gho_***'),
+        (r'(ghu_[a-zA-Z0-9]{36})', 'ghu_***'),
+        (r'(ghs_[a-zA-Z0-9]{36})', 'ghs_***'),
+        (r'(ghr_[a-zA-Z0-9]{36})', 'ghr_***'),
+        (r'(AKIA[0-9A-Z]{16})', 'AKIA***'),
+        (r'(sk-[a-zA-Z0-9]{20,})', 'sk-***'),
+    ]
+
+    @staticmethod
+    def sanitize_output(text: str) -> str:
+        for pattern, replacement in SecurityManager.SENSITIVE_PATTERNS:
+            text = re.sub(pattern, replacement, text)
+        return text
 
     def safe_execute(self, cmd: str, timeout: int = 120) -> str:
         if self.is_dangerous(cmd):
@@ -103,7 +123,7 @@ class SecurityManager:
             out = r.stdout
             if r.stderr:
                 out += "\n" + r.stderr
-            result = out.strip()[:20000] or "OK"
+            result = self.sanitize_output(out.strip()[:20000]) or "OK"
             if r.returncode != 0:
                 result += f"\n[Exit code: {r.returncode}]"
             return result

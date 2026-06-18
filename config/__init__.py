@@ -32,7 +32,7 @@ class TellConfig:
             "providers": ["nvidia"],
             "models": models,
             "security": {
-                "allowed_write_dirs": [os.getcwd(), os.path.expanduser("~")],
+                "allowed_write_dirs": [os.getcwd()],
                 "max_file_size": 1024 * 1024,
                 "dangerous_commands": [
                     "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "> /dev/sda",
