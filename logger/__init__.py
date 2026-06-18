@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Optional, List, Dict
 
 class TellLogger:
+    """Structured file + console logging for agent events."""
+
     def __init__(self, name: str = "tell"):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG)

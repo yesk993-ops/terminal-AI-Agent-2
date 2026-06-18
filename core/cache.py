@@ -6,11 +6,14 @@ from typing import Optional, Any
 
 
 class ResponseCache:
+    """Cache for API responses with TTL-based eviction."""
+
     def __init__(self, config: Any):
         self.config = config
         self._cache_file = Path(".tell_cache.json")
 
     def get(self, query: str) -> Optional[str]:
+        """Retrieve cached response if not expired."""
         if not self._cache_file.exists():
             return None
         try:

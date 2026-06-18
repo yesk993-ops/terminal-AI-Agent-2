@@ -3,6 +3,7 @@ import time
 from typing import List, Dict, Optional, Any
 
 class CommandHistory:
+    """Stores and manages executed command history in memory."""
     def __init__(self, max_size: int = 100):
         self.history: List[Dict[str, Any]] = []
         self.max_size = max_size
@@ -57,12 +58,11 @@ class CommandHistory:
             return "help"
         if command_lower.startswith("clear"):
             return "clear"
-        elif command_lower.startswith("reset"):
+        if command_lower.startswith("reset"):
             return "reset"
-        elif command_lower.startswith("border"):
+        if command_lower.startswith("border"):
             return "ui"
-        else:
-            return "query"
+        return "query"
 
     def export_to_file(self, filepath: str) -> bool:
         try:

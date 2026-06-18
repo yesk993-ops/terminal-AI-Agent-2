@@ -9,12 +9,15 @@ from pathlib import Path
 IS_WINDOWS = platform.system() == "Windows"
 
 class SecurityManager:
+    """Path validation, dangerous command blocking, safe execution."""
+
     def __init__(self, allowed_dirs: List[str], max_file_size: int, dangerous_commands: List[str]):
         self.allowed_dirs = [os.path.abspath(d) for d in allowed_dirs]
         self.max_file_size = max_file_size
         self.dangerous_commands = dangerous_commands
 
     def is_safe_path(self, path: str) -> bool:
+        """Check if path is within allowed write directories."""
         try:
             abs_path = os.path.abspath(os.path.expanduser(path))
             real_path = os.path.realpath(abs_path)
@@ -27,6 +30,7 @@ class SecurityManager:
             return False
 
     def is_dangerous(self, cmd: str) -> bool:
+        """Check if command matches dangerous patterns."""
         cmd_lower = cmd.lower().strip()
         # Normalize whitespace to prevent bypass
         cmd_normalized = re.sub(r'\s+', ' ', cmd_lower)
@@ -74,7 +78,7 @@ class SecurityManager:
             with os.fdopen(fd, 'w') as f:
                 f.write(content)
             return f"Created: {os.path.relpath(abs_path, os.getcwd())} ({len(content)} bytes)"
-        except Exception as e:
+        except OSError as e:
             return f"Error: {e}"
 
     def safe_execute(self, cmd: str, timeout: int = 120) -> str:
@@ -93,7 +97,8 @@ class SecurityManager:
             r = subprocess.run(
                 shell,
                 capture_output=True, text=True, timeout=timeout,
-                env={**safe_env, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+                env={**safe_env, "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+                check=False
             )
             out = r.stdout
             if r.stderr:
@@ -104,5 +109,5 @@ class SecurityManager:
             return result
         except subprocess.TimeoutExpired:
             return "Command timed out [Exit code: -1]"
-        except Exception as e:
+        except OSError as e:
             return f"Error: {e} [Exit code: -2]"

@@ -27,6 +27,8 @@ from core.prompts import CODING_PROMPT
 from logger import get_logger
 
 class AnimatedUI:
+    """Animated terminal UI with typewriter effect and border styles."""
+
     def __init__(self):
         self.log = get_logger(__name__)
         self.border_styles = {
@@ -89,9 +91,7 @@ class AnimatedUI:
         for line in lines:
             sys.stdout.write(f"\033[{self.ef(self.vbar_clr)}m{v}\033[{self.ef(self.text_clr)}m ")
             visible_len = self._visible_len(line)
-            padding = inner - visible_len
-            if padding < 0:
-                padding = 0
+            padding = max(0, inner - visible_len)
             segments = re.split(r'(\033\[[0-9;]*m)', line)
             for seg in segments:
                 if re.match(r'\033\[', seg):

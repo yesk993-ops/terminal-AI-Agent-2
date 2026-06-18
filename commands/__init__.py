@@ -12,6 +12,8 @@ import psutil
 IS_WINDOWS = platform.system() == "Windows"
 
 class LocalCommands:
+    """Local system commands — disk, memory, processes, file listing, and more."""
+
     def __init__(self, security_manager, api_agent):
         self.security = security_manager
         self.api = api_agent

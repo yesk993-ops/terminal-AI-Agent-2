@@ -14,8 +14,6 @@ _FLAG = 221     # warm yellow for command flags/args
 _VAR = 188      # light gray for variables/paths
 _RESET = 0
 
-_HIGHLIGHTERS = {}
-
 def _highlight_python(code: str) -> str:
     keywords = r'\b(def|class|return|if|else|elif|for|while|import|from|as|try|except|finally|with|yield|lambda|pass|break|continue|and|or|not|in|is|None|True|False|raise|global|nonlocal|del|print|self)\b'
     code = re.sub(keywords, lambda m: f"\033[38;5;{_KEYWORD}m{m.group(1)}\033[0m", code)
@@ -114,7 +112,7 @@ def _highlight_cmd_single(text: str) -> str:
     return re.sub(pattern, _replace, text, flags=re.MULTILINE)
 
 
-_HIGHLIGHTERS = {
+_highlighters = {
     "python": _highlight_python,
     "py": _highlight_python,
     "json": _highlight_json,
@@ -129,7 +127,8 @@ _HIGHLIGHTERS = {
 
 
 def highlight_code_block(lang: str, code: str) -> str:
-    fn = _HIGHLIGHTERS.get(lang.lower(), _highlight_generic)
+    """Apply syntax highlighting to a code block by language."""
+    fn = _highlighters.get(lang.lower(), _highlight_generic)
     return fn(code)
 
 

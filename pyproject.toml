@@ -6,14 +6,43 @@ build-backend = "setuptools.backends._legacy:_Backend"
 name = "tell-agent"
 version = "1.0.0"
 description = "AI Terminal Assistant — coding agent and system helper"
+readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
+authors = [
+    {name = "yesk993-ops"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = [
     "requests>=2.25",
+    "psutil>=5.8",
 ]
 
+[project.urls]
+Homepage = "https://github.com/yesk993-ops/terminal-AI-Agent-2"
+Repository = "https://github.com/yesk993-ops/terminal-AI-Agent-2.git"
+
 [project.optional-dependencies]
-monitoring = ["psutil>=5.8"]
+quality = [
+    "pylint",
+    "mypy",
+    "bandit",
+    "types-requests",
+    "types-psutil",
+]
+test = ["pytest"]
 
 [project.scripts]
 tell = "main:main"

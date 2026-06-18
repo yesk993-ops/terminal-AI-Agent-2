@@ -7,6 +7,7 @@ from typing import Dict, Tuple
 IS_WINDOWS = platform.system() == "Windows"
 
 class TerminalUI:
+    """Terminal display — bordered boxes, themes, and color rendering."""
     BORDER_STYLES = {
         "rounded": ("╭", "─", "╮", "│", "╰", "╯"),
         "classic": ("╔", "═", "╗", "║", "╚", "╝"),
@@ -29,6 +30,7 @@ class TerminalUI:
             self.border_style = "minimal"
 
     def get_terminal_width(self) -> int:
+        """Return usable terminal width capped at 240."""
         return min(shutil.get_terminal_size().columns, 240)
 
     def display_box(self, text: str, color: int | None = None) -> None:
@@ -60,6 +62,7 @@ class TerminalUI:
         self.display_box("tell - AI Coding Agent")
 
     def cycle_border_style(self) -> None:
+        """Cycle to the next border style."""
         keys = list(self.BORDER_STYLES)
         idx = (keys.index(self.border_style) + 1) % len(keys)
         self.border_style = keys[idx]

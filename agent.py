@@ -22,10 +22,12 @@ IS_WINDOWS = __import__('platform').system() == "Windows"
 
 
 def box(text, color=96):
+    """Display text in a bordered box using global UI."""
     return ui.display_box(text, color)
 
 
 def typewrite(text, color=96, delay=0.0003):
+    """Display text with typewriter animation in a bordered box."""
     cols = min(shutil.get_terminal_size().columns, 240)
     inner = cols - 4
     tl, h, tr, v, bl, br = ui.BORDER_STYLES[ui.border_style]
@@ -46,6 +48,7 @@ def typewrite(text, color=96, delay=0.0003):
 
 
 def animated_box(text, color=96, delay=0.02):
+    """Display text with per-line animation delay in a bordered box."""
     cols = min(shutil.get_terminal_size().columns, 240)
     inner = cols - 4
     tl, h, tr, v, bl, br = ui.BORDER_STYLES[ui.border_style]
@@ -58,9 +61,7 @@ def animated_box(text, color=96, delay=0.02):
         sys.stdout.write(f"\033[{color}m{v}\033[97m ")
         rendered = re.sub(r'\*\*(.*?)\*\*', r'\033[1;96m\1\033[0m\033[97m', line)
         visible_len = len(re.sub(r'\033\[[0-9;]*m', '', line))
-        padding = inner - visible_len
-        if padding < 0:
-            padding = 0
+        padding = max(0, inner - visible_len)
         sys.stdout.write(rendered)
         sys.stdout.write(f"{' ' * padding}\033[{color}m{v}\033[0m\n")
         sys.stdout.flush()
@@ -83,6 +84,7 @@ def _auto_bold(text):
 
 
 def inline_mode(query):
+    """Execute a single query in inline (non-interactive) mode."""
     if len(query) > 10000:
         print(box("Input too long (max 10000 characters)", 91))
         return
@@ -138,15 +140,20 @@ def main():
         try:
             u = input("\033[94m\u276f\033[0m ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nBye!"); break
+            print("\nBye!")
+            break
 
-        if not u: continue
+        if not u:
+            continue
         if len(u) > 10000:
             print(box("Input too long (max 10000 characters)", 91))
             continue
-        if u.lower() in ("quit","exit"): break
-        if u.lower() == "clear": print("\033[2J\033[H", end=""); continue
-        if u.lower() in ("help","commands"):
+        if u.lower() in ("quit", "exit"):
+            break
+        if u.lower() == "clear":
+            print("\033[2J\033[H", end="")
+            continue
+        if u.lower() in ("help", "commands"):
             cmds = "\n".join(f"  {k}" for k in sorted(agent.commands.get_command_map()))
             print(f"\n{box(f'Built-in commands:\n{cmds}', 92)}")
             print(f"\n{box('do <task> - coding/system tasks  |  border  |  reset  |  clear  |  help', 92)}\n")
@@ -157,7 +164,9 @@ def main():
             continue
         if u.lower() == "reset":
             msgs = [{"role":"system","content":QUERY_PROMPT}]
-            print(box("Conversation reset", 92)); print(); continue
+            print(box("Conversation reset", 92))
+            print()
+            continue
 
         if u.lower().startswith("do "):
             msgs[0] = {"role": "system", "content": CODING_PROMPT}

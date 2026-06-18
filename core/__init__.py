@@ -18,16 +18,18 @@ from config import TellConfig
 from api import NVIDIAAgent
 from commands import LocalCommands
 from ui import TerminalUI
+from ui.highlighter import highlight_response
 from security import SecurityManager
 from logger import get_logger
 from . import analyzer
 from .prompts import CODING_PROMPT, DOCUMENT_PROMPT
 from .cache import ResponseCache
-from ui.highlighter import highlight_response
 
 IS_WINDOWS = platform.system() == "Windows"
 
 class TellAgent:
+    """Core agent orchestrator — prompt selection, API calls, command dispatch."""
+
     def __init__(self, config_path: str = ".tellrc"):
         self.log = get_logger("TellAgent")
         self.log.info(f"Initializing TellAgent with config: {config_path}")
@@ -67,17 +69,21 @@ class TellAgent:
         self.log.info("TellAgent initialized successfully")
 
     def add_message(self, role: str, content: str) -> None:
+        """Add a message to the conversation history."""
         self.message_history.append({"role": role, "content": content})
 
     def get_messages(self) -> List[Dict[str, str]]:
+        """Get all conversation messages."""
         return self.message_history
 
     def clear_history(self) -> None:
+        """Clear all conversation history."""
         self.message_history = []
         if self.history:
             self.history.clear()
 
     def execute_command(self, query: str) -> Tuple[str, Any]:
+        """Execute a command and log to history."""
         action, value = self.commands.execute(query)
 
         if action in ("local", "shell"):
@@ -98,9 +104,10 @@ class TellAgent:
         return {"role": "system", "content": content}
 
     def process_query(self, query: str) -> str:
+        """Process a user query and return the AI response."""
         messages = self.get_messages()
-        result = analyzer.analyze(query)
-        level = result["level"]
+        result_analysis = analyzer.analyze(query)
+        level = result_analysis["level"]
 
         # Detect document/SOP creation intent
         doc_keywords = [
@@ -133,11 +140,11 @@ class TellAgent:
                 topic = topic.replace(prefix, "").strip()
             topic = re.sub(r'[^a-z0-9]+', '-', topic).strip('-')[:50]
             filename = f"{topic or 'document'}-guide.md"
-            result = self.security.safe_write(filename, raw_response)
-            return f"{result}\n\n{raw_response}"
+            save_result = self.security.safe_write(filename, raw_response)
+            return f"{save_result}\n\n{raw_response}"
 
         if level == "complex":
-            self.log.info(f"Using complex prompt for query ({result['score']} pts): {result['factors']}")
+            self.log.info("Using complex prompt for query (%s pts): %s", result_analysis['score'], result_analysis['factors'])
 
         system_prompt = self._get_dynamic_system_prompt(query)
 
@@ -208,10 +215,12 @@ class TellAgent:
 
     def _run_commands(self, text: str) -> str:
         """Parse and execute WRITE: and EXECUTE: directives from AI response.
-        Also auto-detect code blocks and create files from them."""
+        Also auto-detect code blocks and create files from them.
+        Returns empty string if no directives found (caller should fall back to raw response)."""
         results = []
         created_files = []
         step_num = 0
+        found_directive = False
         lines = text.split('\n')
         i = 0
 
@@ -220,14 +229,13 @@ class TellAgent:
             step_num += 1
             results.append(f"\n  Step {step_num}: {msg}")
 
-        add_step("Parsing response for directives")
-
         while i < len(lines):
             line = lines[i].strip()
             # Remove <code> tags
             line = re.sub(r'</?code>', '', line).strip()
 
             if line.startswith('WRITE:'):
+                found_directive = True
                 # Parse file path
                 path = line[6:].strip()
                 path = path.strip('`')
@@ -240,8 +248,8 @@ class TellAgent:
                     continue
                 # Skip paths that are just directory names
                 basename = os.path.basename(path.rstrip('/'))
-                ALLOWED_NO_EXT = {'Makefile', 'Dockerfile', 'LICENSE', 'README', 'Procfile', '.gitignore', '.dockerignore'}
-                if '.' not in basename and basename not in ALLOWED_NO_EXT:
+                allowed_no_ext = {'Makefile', 'Dockerfile', 'LICENSE', 'README', 'Procfile', '.gitignore', '.dockerignore'}
+                if '.' not in basename and basename not in allowed_no_ext:
                     i += 1
                     continue
 
@@ -289,6 +297,7 @@ class TellAgent:
                 i -= 1
 
             elif line.startswith('EXECUTE:'):
+                found_directive = True
                 cmd = line[8:].strip()
                 cmd = cmd.strip('`')
 
@@ -303,7 +312,7 @@ class TellAgent:
                     finally:
                         try:
                             s.close()
-                        except:
+                        except OSError:
                             pass
 
                 # Skip dangerous commands
@@ -317,7 +326,8 @@ class TellAgent:
                             ['sh', '-c', cmd],
                             capture_output=True, text=True, timeout=120,
                             env={k: v for k, v in os.environ.items()
-                                 if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV")}
+                                 if k not in ("LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV")},
+                            check=False
                         )
                         output = r.stdout.strip()
                         if r.stderr:
@@ -325,12 +335,15 @@ class TellAgent:
                         results.append(f"$ {cmd}\n{output[:2000]}")
                     except subprocess.TimeoutExpired:
                         results.append(f"$ {cmd}\nCommand timed out")
-                    except Exception as e:
+                    except (OSError, ValueError) as e:
                         results.append(f"$ {cmd}\nError: {e}")
                 i += 1
                 continue
 
             i += 1
+
+        if not found_directive:
+            return ''
 
         add_step(f"Created {len(created_files)} file(s)")
 
@@ -341,19 +354,21 @@ class TellAgent:
                 try:
                     r = subprocess.run(
                         ['pip', 'install', '--break-system-packages', '-r', f],
-                        capture_output=True, text=True, timeout=120
+                        capture_output=True, text=True, timeout=120,
+                        check=False
                     )
                     results.append(f"$ pip install --break-system-packages -r {f}\n{r.stdout[:500]}")
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     results.append(f"Error installing deps: {e}")
             elif basename == 'package.json':
                 try:
                     r = subprocess.run(
                         ['npm', 'install'],
-                        capture_output=True, text=True, timeout=120
+                        capture_output=True, text=True, timeout=120,
+                        check=False
                     )
                     results.append(f"$ npm install\n{r.stdout[:500]}")
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     results.append(f"Error installing deps: {e}")
 
         return '\n'.join(results) if results else ''
@@ -370,6 +385,7 @@ class TellAgent:
         return results, created_files
 
     def get_help(self) -> str:
+        """Return help text listing available commands."""
         commands = sorted(list(self.commands.get_command_map().keys()))
         help_text = "Built-in commands:\n"
         help_text += "".join(f"  {cmd}\n" for cmd in commands)
@@ -385,6 +401,7 @@ class TellAgent:
         return help_text
 
     def show_history(self, count: int = 10) -> str:
+        """Return formatted command history."""
         if not self.history:
             return "Command history is disabled."
 
@@ -401,6 +418,7 @@ class TellAgent:
         return result
 
     def run(self) -> None:
+        """Main interactive loop — processes user input and dispatches responses."""
         self.ui.display_welcome()
 
         self.message_history = []
@@ -426,7 +444,7 @@ class TellAgent:
                 break
 
             if user_input.lower() == "clear":
-                subprocess.run(["cls" if os.name == "nt" else "clear"], shell=False)
+                subprocess.run(["cls" if os.name == "nt" else "clear"], shell=False, check=False)
                 continue
 
             if user_input.lower() in ("help", "commands"):
@@ -506,7 +524,7 @@ class TellAgent:
                         sys.stdout.write(f"\033[38;5;{spinner_color}m{next(spinner)} Generating document...\033[0m")
                         sys.stdout.flush()
                         response = self.api.generate_response(messages)
-                        sys.stdout.write(f"\r\033[K\033[?25h")
+                        sys.stdout.write("\r\033[K\033[?25h")
 
                         # Check if AI used WRITE: directives
                         if re.search(r'^WRITE:', response, re.MULTILINE):

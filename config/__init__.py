@@ -4,6 +4,8 @@ import json
 from typing import Dict, Any, List, Optional
 
 class TellConfig:
+    """Configuration loader for .tellrc with env var overrides."""
+
     def __init__(self, config_path: str = ".tellrc"):
         self.config_path = os.path.expanduser(config_path)
         self.data = self._load_config()
@@ -84,6 +86,7 @@ class TellConfig:
         }
 
     def save(self) -> bool:
+        """Write config to disk. Returns True on success."""
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=2)
@@ -92,6 +95,7 @@ class TellConfig:
             return False
 
     def get(self, key: str, default: Any = None) -> Any:
+        """Get config value by dot-separated key with optional default."""
         keys = key.split('.')
         value = self.data
         for k in keys:

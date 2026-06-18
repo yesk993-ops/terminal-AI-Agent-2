@@ -7,6 +7,8 @@ from typing import List, Dict, Any, Generator, Optional
 import requests
 
 class NVIDIAAgent:
+    """API client for NVIDIA NIM chat completions with model fallback."""
+
     def __init__(self, api_key: str, models: List[str], timeout: int = 45):
         self.api_key = api_key
         self.models = models
