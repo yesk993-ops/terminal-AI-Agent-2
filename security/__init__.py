@@ -83,14 +83,14 @@ class SecurityManager:
             return "Error: write failed"
 
     SENSITIVE_PATTERNS = [
-        (r'(?i)(BEGIN\s+(RSA|DSA|EC|OPENSSH|PRIVATE)\s+KEY)', 'BEGIN PRIVATE KEY'),
+        (r'(?i)-----BEGIN\s+(?:RSA\s+)?(?:DSA\s+)?(?:EC\s+)?(?:OPENSSH\s+)?(?:PRIVATE\s+)?KEY-----', '-----BEGIN PRIVATE KEY-----'),
         (r'(nvapi-[a-zA-Z0-9_-]{20,})', 'nvapi-***'),
-        (r'(sk-or-[a-zA-Z0-9]{20,})', 'sk-or-***'),
-        (r'(ghp_[a-zA-Z0-9]{36})', 'ghp_***'),
-        (r'(gho_[a-zA-Z0-9]{36})', 'gho_***'),
-        (r'(ghu_[a-zA-Z0-9]{36})', 'ghu_***'),
-        (r'(ghs_[a-zA-Z0-9]{36})', 'ghs_***'),
-        (r'(ghr_[a-zA-Z0-9]{36})', 'ghr_***'),
+        (r'(sk-or-v1-[a-zA-Z0-9]{20,})', 'sk-or-v1-***'),
+        (r'(ghp_[a-zA-Z0-9]{20,})', 'ghp_***'),
+        (r'(gho_[a-zA-Z0-9]{20,})', 'gho_***'),
+        (r'(ghu_[a-zA-Z0-9]{20,})', 'ghu_***'),
+        (r'(ghs_[a-zA-Z0-9]{20,})', 'ghs_***'),
+        (r'(ghr_[a-zA-Z0-9]{20,})', 'ghr_***'),
         (r'(AKIA[0-9A-Z]{16})', 'AKIA***'),
         (r'(sk-[a-zA-Z0-9]{20,})', 'sk-***'),
     ]
