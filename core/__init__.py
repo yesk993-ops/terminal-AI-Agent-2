@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TellConfig
-from api import NVIDIAAgent
+from api import PROVIDER_REGISTRY, MultiProviderAgent, create_agent
 from commands import LocalCommands
 from ui import TerminalUI
 from ui.highlighter import highlight_response
@@ -37,11 +37,29 @@ class TellAgent:
         self.config = TellConfig(config_path)
         self.config.update_from_env()
 
-        self.api = NVIDIAAgent(
-            api_key=os.environ.get("NVIDIA_API_KEY", ""),
-            models=self.config.get("models.system"),
-            timeout=self.config.get("performance.timeout", 45)
-        )
+        providers = self.config.get("providers", [self.config.get("provider", "nvidia")])
+        agent_configs = []
+        for name in providers:
+            pconf = PROVIDER_REGISTRY.get(name)
+            if not pconf:
+                continue
+            api_key = os.environ.get(pconf["env_key"], "")
+            if not api_key:
+                continue
+            models = self.config.get(f"models.{name}.system") or self.config.get("models.system", [])
+            if not models:
+                continue
+            agent_configs.append({"class": pconf["class"], "api_key": api_key, "models": models})
+
+        if not agent_configs:
+            agent_configs.append({"class": PROVIDER_REGISTRY["nvidia"]["class"], "api_key": "", "models": []})
+
+        if len(agent_configs) == 1:
+            c = agent_configs[0]
+            self.api = c["class"](api_key=c["api_key"], models=c["models"],
+                                   timeout=self.config.get("performance.timeout", 45))
+        else:
+            self.api = MultiProviderAgent(agent_configs, timeout=self.config.get("performance.timeout", 45))
 
         self.security = SecurityManager(
             allowed_dirs=self.config.get("security.allowed_write_dirs"),

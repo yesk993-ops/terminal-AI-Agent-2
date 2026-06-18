@@ -1,4 +1,4 @@
-"""NVIDIA NIM API client — streaming and non-streaming chat completions."""
+"""OpenAI-compatible chat completion client with model fallback."""
 import json
 import re
 import time
@@ -7,12 +7,15 @@ from typing import List, Dict, Any, Generator, Optional
 import requests
 
 class NVIDIAAgent:
-    """API client for NVIDIA NIM chat completions with model fallback."""
+    """API client for OpenAI-compatible chat completions with model fallback."""
 
-    def __init__(self, api_key: str, models: List[str], timeout: int = 45):
+    def __init__(self, api_key: str, models: List[str], timeout: int = 45,
+                 base_url: str = None, extra_headers: dict = None):
         self.api_key = api_key
         self.models = models
         self.timeout = timeout
+        self.base_url = base_url or "https://integrate.api.nvidia.com/v1/chat/completions"
+        self.extra_headers = extra_headers or {}
         self.session = requests.Session()
         self.last_model_idx = 0
 
@@ -38,32 +41,30 @@ class NVIDIAAgent:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Accept": "application/json",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                **self.extra_headers
             }
 
-            for _ in range(3):
-                try:
-                    r = self.session.post(
-                        "https://integrate.api.nvidia.com/v1/chat/completions",
-                        headers=headers,
-                        json=payload,
-                        timeout=(15, self.timeout)
-                    )
+            try:
+                r = self.session.post(
+                    self.base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=(15, self.timeout)
+                )
 
-                    if r.status_code == 429:
-                        time.sleep(0.5)
-                        continue
-
-                    if r.status_code != 200:
-                        break
-
-                    self.last_model_idx = idx
-                    return self._extract_content(r.json())
-
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                    time.sleep(0.3)
+                if r.status_code == 429:
                     continue
-                except Exception as e:
+
+                if r.status_code != 200:
+                    continue
+
+                self.last_model_idx = idx
+                return self._extract_content(r.json())
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                continue
+            except Exception as e:
                     # Sanitize error to prevent API key leak
                     err_str = str(e)
                     if self.api_key and self.api_key in err_str:
@@ -94,61 +95,59 @@ class NVIDIAAgent:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Accept": "text/event-stream",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                **self.extra_headers
             }
 
-            for _ in range(2):
-                try:
-                    r = self.session.post(
-                        "https://integrate.api.nvidia.com/v1/chat/completions",
-                        headers=headers,
-                        json=payload,
-                        timeout=(15, self.timeout),
-                        stream=True
-                    )
+            try:
+                r = self.session.post(
+                    self.base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=(15, self.timeout),
+                    stream=True
+                )
 
-                    if r.status_code == 429:
-                        time.sleep(0.5)
-                        continue
-
-                    if r.status_code != 200:
-                        # Don't leak sensitive response data
-                        yield f"API Error {r.status_code}"
-                        return
-
-                    self.last_model_idx = idx
-
-                    for line in r.iter_lines(decode_unicode=True):
-                        if line is None or not line:
-                            continue
-                        if line.startswith('data: '):
-                            data = line[6:]
-                            if data == '[DONE]':
-                                return
-                            try:
-                                chunk = json.loads(data)
-                                choices = chunk.get('choices')
-                                if choices and len(choices) > 0:
-                                    delta = choices[0].get('delta', {})
-                                    content = delta.get('content', '')
-                                    if content:
-                                        yield self._clean_text(content)
-                            except json.JSONDecodeError:
-                                pass
-                    return
-
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                    time.sleep(0.3)
+                if r.status_code == 429:
                     continue
-                except Exception as e:
-                    # Sanitize error to prevent API key leak
-                    err_str = str(e)
-                    if self.api_key and self.api_key in err_str:
-                        err_str = err_str.replace(self.api_key, "[REDACTED]")
-                    yield f"Error: {err_str}"
+
+                if r.status_code != 200:
+                    # Don't leak sensitive response data
+                    yield f"API Error {r.status_code}"
                     return
 
-            yield "All models failed"
+                self.last_model_idx = idx
+
+                for line in r.iter_lines(decode_unicode=True):
+                    if line is None or not line:
+                        continue
+                    if line.startswith('data: '):
+                        data = line[6:]
+                        if data == '[DONE]':
+                            return
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get('choices')
+                            if choices and len(choices) > 0:
+                                delta = choices[0].get('delta', {})
+                                content = delta.get('content', '')
+                                if content:
+                                    yield content
+                        except json.JSONDecodeError:
+                            pass
+                return
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                continue
+            except Exception as e:
+                # Sanitize error to prevent API key leak
+                err_str = str(e)
+                if self.api_key and self.api_key in err_str:
+                    err_str = err_str.replace(self.api_key, "[REDACTED]")
+                yield f"Error: {err_str}"
+                return
+
+        yield "All models failed"
 
     def _guess_tokens(self, messages: List[Dict[str, str]]) -> int:
         total = sum(len(m.get("content", "")) for m in messages if m.get("role") == "user")
@@ -280,3 +279,109 @@ class NVIDIAAgent:
             result.append(line)
 
         return '\n'.join(result).strip()
+
+
+class OpenRouterAgent(NVIDIAAgent):
+    """OpenRouter API client — uses OpenAI-compatible format."""
+
+    BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    def __init__(self, api_key: str, models: List[str], timeout: int = 45):
+        super().__init__(
+            api_key=api_key,
+            models=models,
+            timeout=timeout,
+            base_url=self.BASE_URL,
+            extra_headers={
+                "HTTP-Referer": "https://github.com/terminal-AI-Agent-2",
+                "X-Title": "Tell AI Agent",
+            }
+        )
+
+
+PROVIDER_REGISTRY = {
+    "nvidia": {
+        "class": NVIDIAAgent,
+        "env_key": "NVIDIA_API_KEY",
+        "env_model": "NVIDIA_MODEL",
+        "default_models": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
+    },
+    "openrouter": {
+        "class": OpenRouterAgent,
+        "env_key": "OPENROUTER_API_KEY",
+        "env_model": "OPENROUTER_MODEL",
+        "default_models": [
+            "openrouter/owl-alpha",
+            "google/lyria-3-pro-preview",
+            "google/lyria-3-clip-preview",
+            "qwen/qwen3-coder:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nex-agi/nex-n2-pro:free",
+            "poolside/laguna-xs.2:free",
+            "poolside/laguna-m.1:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "google/gemma-4-31b-it:free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+            "cohere/north-mini-code:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "nvidia/nemotron-3-nano-30b-a3b:free",
+            "openai/gpt-oss-120b:free",
+            "openai/gpt-oss-20b:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "meta-llama/llama-3.2-3b-instruct:free",
+            "nousresearch/hermes-3-llama-3.1-405b:free",
+            "nvidia/nemotron-3.5-content-safety:free",
+            "nvidia/nemotron-nano-12b-v2-vl:free",
+            "nvidia/nemotron-nano-9b-v2:free",
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "liquid/lfm-2.5-1.2b-instruct:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+        ],
+    },
+}
+
+
+def create_agent(provider: str, api_key: str, models: List[str], timeout: int = 45):
+    """Factory: create the right agent for a given provider name."""
+    provider = provider.lower()
+    if provider not in PROVIDER_REGISTRY:
+        raise ValueError(
+            f"Unknown provider '{provider}'. "
+            f"Supported: {list(PROVIDER_REGISTRY.keys())}"
+        )
+    cls = PROVIDER_REGISTRY[provider]["class"]
+    return cls(api_key=api_key, models=models, timeout=timeout)
+
+
+_MULTI_FAIL_PREFIXES = ("All models", "All providers", "API Error", "Error:")
+
+
+class MultiProviderAgent:
+    """Agent that tries models from multiple providers in order."""
+
+    def __init__(self, providers: List[Dict[str, Any]], timeout: int = 45):
+        self.providers = []
+        for p in providers:
+            cls = p["class"]
+            self.providers.append(
+                cls(api_key=p["api_key"], models=p["models"], timeout=p.get("timeout", timeout))
+            )
+
+    def generate_response(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None) -> str:
+        for agent in self.providers:
+            resp = agent.generate_response(messages, max_tokens=max_tokens)
+            if resp and not resp.startswith(_MULTI_FAIL_PREFIXES):
+                return resp
+        return "All providers failed"
+
+    def generate_stream(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None):
+        for agent in self.providers:
+            got = False
+            for chunk in agent.generate_stream(messages, max_tokens=max_tokens):
+                if chunk and not chunk.startswith(_MULTI_FAIL_PREFIXES):
+                    got = True
+                    yield chunk
+            if got:
+                return
+        yield "All providers failed"

@@ -3,6 +3,8 @@ import os
 import json
 from typing import Dict, Any, List, Optional
 
+from api import PROVIDER_REGISTRY
+
 class TellConfig:
     """Configuration loader for .tellrc with env var overrides."""
 
@@ -20,11 +22,15 @@ class TellConfig:
         return self._get_default_config()
 
     def _get_default_config(self) -> Dict[str, Any]:
+        models = {}
+        for pname, pconf in PROVIDER_REGISTRY.items():
+            models[pname] = {
+                "query": list(pconf.get("default_models", [])),
+                "system": list(pconf.get("default_models", [])),
+            }
         return {
-            "models": {
-                "query": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
-                "system": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"]
-            },
+            "providers": ["nvidia"],
+            "models": models,
             "security": {
                 "allowed_write_dirs": [os.getcwd(), os.path.expanduser("~")],
                 "max_file_size": 1024 * 1024,
@@ -115,11 +121,12 @@ class TellConfig:
         target[keys[-1]] = value
 
     def update_from_env(self) -> None:
-        env_models = os.environ.get("NVIDIA_MODEL")
-        if env_models:
-            models = [m.strip() for m in env_models.split(",") if m.strip()]
-            self.set("models.query", models)
-            self.set("models.system", models)
+        for pname, pconf in PROVIDER_REGISTRY.items():
+            env_val = os.environ.get(pconf["env_model"])
+            if env_val:
+                models = [m.strip() for m in env_val.split(",") if m.strip()]
+                self.set(f"models.{pname}.query", models)
+                self.set(f"models.{pname}.system", models)
 
         tell_border = os.environ.get("TELL_BORDER")
         if tell_border:

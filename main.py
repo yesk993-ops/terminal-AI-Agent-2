@@ -118,9 +118,20 @@ class AnimatedUI:
 
 def main():
     """Main entry point"""
-    if not os.environ.get("NVIDIA_API_KEY"):
-        print("Error: NVIDIA_API_KEY is not set.")
-        print("Get a key at: https://build.nvidia.com/explore")
+    from api import PROVIDER_REGISTRY
+    from config import TellConfig
+    cfg = TellConfig()
+    providers = cfg.get("providers", [cfg.get("provider", "nvidia")])
+    for name in providers:
+        pconf = PROVIDER_REGISTRY.get(name)
+        if pconf and os.environ.get(pconf["env_key"]):
+            break
+    else:
+        print("Error: No API key found for any configured provider.")
+        print("Set one of these environment variables:")
+        for name in providers:
+            pconf = PROVIDER_REGISTRY.get(name, {})
+            print(f"  export {pconf.get('env_key', name.upper() + '_API_KEY')}=\"your-key\"")
         sys.exit(1)
 
     _log = get_logger(__name__)

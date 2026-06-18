@@ -1,15 +1,32 @@
 {
+  "providers": ["openrouter", "nvidia"],
   "models": {
-    "query": [
-      "meta/llama-3.1-8b-instruct",
-      "deepseek-ai/deepseek-v4-pro",
-      "mistralai/mistral-small-4-119b-2603"
-    ],
-    "system": [
-      "meta/llama-3.1-8b-instruct",
-      "deepseek-ai/deepseek-v4-pro",
-      "mistralai/mistral-small-4-119b-2603"
-    ]
+    "openrouter": {
+      "query": [
+        "openrouter/owl-alpha",
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "qwen/qwen3-coder:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "openai/gpt-oss-120b:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free"
+      ],
+      "system": [
+        "openrouter/owl-alpha",
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "qwen/qwen3-coder:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "openai/gpt-oss-120b:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free"
+      ]
+    },
+    "nvidia": {
+      "query": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
+      "system": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"]
+    }
   },
   "security": {
     "allowed_write_dirs": [
@@ -61,8 +78,7 @@
   "performance": {
     "enable_caching": true,
     "cache_ttl": 3600,
-    "max_retries": 2,
-    "timeout": 15
+    "timeout": 8
   },
   "behavior": {
     "enable_command_history": true,

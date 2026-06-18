@@ -14,10 +14,13 @@ if "%1"=="" (
     exit /b 1
 )
 
-if "%NVIDIA_API_KEY%"=="" (
-    echo Error: NVIDIA_API_KEY is not set.
-    echo Get a key: https://build.nvidia.com/explore
-    echo Then: set NVIDIA_API_KEY="nvapi-..."
+if "%NVIDIA_API_KEY%"=="" if "%OPENROUTER_API_KEY%"=="" (
+    echo Error: NVIDIA_API_KEY or OPENROUTER_API_KEY is not set.
+    echo.
+    echo   NVIDIA:   set NVIDIA_API_KEY="nvapi-..."
+    echo   OpenRouter: set OPENROUTER_API_KEY="sk-or-..."
+    echo.
+    echo Get a key: https://build.nvidia.com/explore  or  https://openrouter.ai/keys
     exit /b 1
 )
 

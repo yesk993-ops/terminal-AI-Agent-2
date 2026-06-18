@@ -7,10 +7,21 @@ import shutil
 import textwrap
 import time
 
-API_KEY = os.environ.get("NVIDIA_API_KEY")
-if not API_KEY:
-    print("Error: NVIDIA_API_KEY environment variable not set.")
-    print("Get a key at: https://build.nvidia.com/explore")
+from config import TellConfig
+
+def _check_api_key():
+    from api import PROVIDER_REGISTRY
+    cfg = TellConfig()
+    providers = cfg.get("providers", [cfg.get("provider", "nvidia")])
+    for name in providers:
+        pconf = PROVIDER_REGISTRY.get(name)
+        if pconf and os.environ.get(pconf["env_key"]):
+            return
+    print("Error: No API key found for any configured provider.")
+    print("Set one of these environment variables:")
+    for name in providers:
+        pconf = PROVIDER_REGISTRY.get(name, {})
+        print(f"  export {pconf.get('env_key', name.upper() + '_API_KEY')}=\"your-key\"")
     sys.exit(1)
 
 from core import TellAgent
@@ -85,6 +96,7 @@ def _auto_bold(text):
 
 def inline_mode(query):
     """Execute a single query in inline (non-interactive) mode."""
+    _check_api_key()
     if len(query) > 10000:
         print(box("Input too long (max 10000 characters)", 91))
         return
@@ -126,6 +138,7 @@ def inline_mode(query):
 
 
 def main():
+    _check_api_key()
     if len(sys.argv) > 2 and sys.argv[1] == "--inline":
         inline_mode(' '.join(sys.argv[2:]))
         return

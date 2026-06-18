@@ -21,10 +21,13 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-if [ -z "$NVIDIA_API_KEY" ]; then
-    echo "Error: NVIDIA_API_KEY is not set."
-    echo "Get a key: https://build.nvidia.com/explore"
-    echo "Then: export NVIDIA_API_KEY=\"nvapi-...\""
+if [ -z "$NVIDIA_API_KEY" ] && [ -z "$OPENROUTER_API_KEY" ]; then
+    echo "Error: NVIDIA_API_KEY or OPENROUTER_API_KEY is not set."
+    echo ""
+    echo "  NVIDIA:   export NVIDIA_API_KEY=\"nvapi-...\""
+    echo "  OpenRouter: export OPENROUTER_API_KEY=\"sk-or-...\""
+    echo ""
+    echo "Get a key: https://build.nvidia.com/explore  or  https://openrouter.ai/keys"
     exit 1
 fi
 
