@@ -141,6 +141,29 @@ class TellAgent:
         if self.history:
             self.history.clear()
 
+    def _clean_markdown(self, text: str) -> str:
+        lines = text.split('\n')
+        out = []
+        for line in lines:
+            # Remove heading markers
+            line = re.sub(r'^#{1,6}\s+', '', line)
+            # Remove bullet markers (*, -, +) at line start
+            line = re.sub(r'^[\*\-\+]\s+', '', line)
+            # Remove numbered-list markers (1., 2., etc.) — keep the content
+            line = re.sub(r'^\d+\.\s+', '', line)
+            # Remove table separator rows
+            if re.match(r'^[\s\|\-\+:=]+$', line):
+                continue
+            out.append(line)
+        cleaned = '\n'.join(out)
+        # Remove stray * and # characters that aren't part of **bold** markers
+        cleaned = re.sub(r'(?<!\*)\*(?!\*)', '', cleaned)
+
+        cleaned = cleaned.replace('|', '')
+        # Collapse multiple blank lines
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        return cleaned.strip()
+
     def execute_command(self, query: str) -> Tuple[str, Any]:
         """Run a user‑issued command through ``LocalCommands`` and record it.
 
@@ -207,6 +230,7 @@ class TellAgent:
         if is_doc_request:
             messages = [m for m in messages if m.get("role") != "system"]
             messages.insert(0, {"role": "system", "content": DOCUMENT_PROMPT})
+            messages.append({"role": "user", "content": query})
             try:
                 raw_response = self.api.generate_response(messages)
             except Exception as e:
@@ -243,6 +267,8 @@ class TellAgent:
         # Remove any existing system prompt and insert the new one
         messages = [m for m in messages if m.get("role") != "system"]
         messages.insert(0, system_prompt)
+        # Append the current user query so the model sees it as part of the conversation
+        messages.append({"role": "user", "content": query})
 
         if self.config.get("performance.enable_caching"):
             cached_response = self.cache.get(query)
@@ -293,8 +319,11 @@ class TellAgent:
             self.add_message("assistant", raw_response)
             return write_results
 
-        # Convert markdown bold (**text**) to ANSI bold and keep colors for code/commands
-        formatted = re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', raw_response)
+        # ---- Clean all markdown symbols from the response ----
+        cleaned = self._clean_markdown(raw_response)
+
+        # Convert any remaining markdown bold (**text**) to ANSI bold
+        formatted = re.sub(r'\*\*(.*?)\*\*', r'\033[1;92m\1\033[0m', cleaned)
         response = highlight_response(formatted)
 
         # Persist assistant response so conversation memory is complete
@@ -312,6 +341,7 @@ class TellAgent:
         system_prompt = self._get_dynamic_system_prompt(query)
         messages = [m for m in messages if m.get("role") != "system"]
         messages.insert(0, system_prompt)
+        messages.append({"role": "user", "content": query})
         max_tokens = analyzer.get_max_tokens(level)
 
         full_text = ""

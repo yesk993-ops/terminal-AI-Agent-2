@@ -2,17 +2,18 @@
 import re
 
 # Standard 16-color ANSI palette — works on Linux, macOS, and Windows terminals
-_KEY = 34       # blue for YAML/JSON keys
+_KEY = 36       # cyan for YAML/JSON keys
 _KEYWORD = 34   # blue for language keywords
-_STRING = 32    # green for strings
+_STRING = 33    # yellow for strings
 _NUMBER = 33    # yellow for numbers
 _BOOL = 35      # magenta for booleans/null
 _COMMENT = 90   # bright black (gray) for comments
 _FENCE = 33     # yellow for ``` markers
-_CMD = 36       # cyan for commands
-_FLAG = 33      # yellow for command flags/args
+_CMD = 36       # cyan for bare command lines
+_CMD_INLINE = 36  # cyan for inline commands (`cmd`)
+_FLAG = 35      # magenta for command flags/args
 _VAR = 37       # white for variables/paths
-_RESET = 0
+_BLOCK_BG = 236  # dark gray background for code blocks
 
 def _highlight_python(code: str) -> str:
     keywords = r'\b(def|class|return|if|else|elif|for|while|import|from|as|try|except|finally|with|yield|lambda|pass|break|continue|and|or|not|in|is|None|True|False|raise|global|nonlocal|del|print|self)\b'
@@ -78,7 +79,7 @@ _SINGLE_CMDS = ("sudo", "doctl", "gcloud", "az", "aws", "oc", "istioctl", "linke
 
 def _highlight_inline_code(text: str) -> str:
     """Highlight inline backtick content: `kubectl get pods`"""
-    return re.sub(r'`([^`]+)`', lambda m: f"\033[{_CMD}m{m.group(1)}\033[0m", text)
+    return re.sub(r'`([^`]+)`', lambda m: f"\033[{_CMD_INLINE}m{m.group(1)}\033[0m", text)
 
 
 def _color_rest(rest: str) -> str:
@@ -140,7 +141,8 @@ def highlight_response(text: str) -> str:
         lang = m.group(1).strip() or ""
         code = m.group(2)
         highlighted = highlight_code_block(lang, code)
-        return f"\033[{_FENCE}m```{lang}\033[0m\n{highlighted}\n\033[{_FENCE}m```\033[0m"
+        bg = _BLOCK_BG
+        return f"\033[48;5;{bg}m\033[{_FENCE}m```{lang}\033[0m\n{highlighted}\n\033[48;5;{bg}m\033[{_FENCE}m```\033[0m\033[0m"
 
     text = re.sub(
         r'```(\w*)\n(.*?)```',

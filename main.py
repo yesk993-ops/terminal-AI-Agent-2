@@ -41,10 +41,10 @@ class AnimatedUI:
         }
         self.current_style = "minimal"
         self.ef = lambda c: f"38;5;{c}"
-        self.border_clr = 37
-        self.text_clr = 188
+        self.border_clr = 6
+        self.text_clr = 250
         self.bold_clr = 107
-        self.vbar_clr = 37
+        self.vbar_clr = 6
 
     def get_terminal_width(self) -> int:
         return min(shutil.get_terminal_size().columns, 240)
