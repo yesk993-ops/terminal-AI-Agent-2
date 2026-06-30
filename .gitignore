@@ -8,6 +8,8 @@ venv/
 dist/
 build/
 .tell_cache.json
+.tell_history.json
+hello_world.py
 *.log
 .DS_Store
 Thumbs.db
