@@ -1,161 +1,209 @@
-# 🤖 Tell — AI Terminal Assistant
+# tell – Terminal AI Agent
 
-A terminal-based AI assistant powered by **OpenRouter** and **NVIDIA NIM**. Ask questions, run system tasks, and automate coding — all from your command line. Automatically falls back between providers and models for maximum uptime.
-
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey.svg)]()
-[![OpenRouter](https://img.shields.io/badge/OpenRouter-Free-FF6B6B.svg)](https://openrouter.ai)
-[![NVIDIA NIM](https://img.shields.io/badge/NVIDIA-NIM-76B900.svg)](https://build.nvidia.com)
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/yesk993-ops/terminal-AI-Agent-2.git
-cd terminal-AI-Agent-2
-bash install.sh
-export OPENROUTER_API_KEY="sk-or-..."
-tell "what is docker?"
-```
-
-Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys) — no credit card required.
-
-### Using NVIDIA instead
-
-```bash
-export NVIDIA_API_KEY="nvapi-..."
-# Key at https://build.nvidia.com/explore
-```
-
----
-
-## Usage
-
-### Ask Questions
-```bash
-tell "explain kubernetes networking"
-tell "how does git rebase work?"
-tell "write a script to monitor CPU temperature"
-```
-
-### Run System Tasks
-```bash
-tell "do disk"          # Disk usage
-tell "do memory"        # RAM usage
-tell "do ports"         # Open ports
-tell "do scan"          # Security scan
-tell "what are files"   # List files
-```
-
-### Interactive Mode
-```bash
-./run.sh
-```
-
----
-
-## Multi-Provider Architecture
-
-Tell supports both OpenRouter and NVIDIA simultaneously:
-
-1. **OpenRouter** — top free models tried in order:
-   - `qwen/qwen3-coder:free` (1M context)
-   - `google/gemma-4-26b-a4b-it:free` (262K)
-   - `openrouter/owl-alpha` (1M context)
-2. **NVIDIA NIM** — 3 models as fallback
-3. **Zero-delay failover** — on any error, instantly tries the next model
-4. **Fast streaming** — raw tokens delivered without heavy post-processing
-5. **Speed mode** — enable `"speed_mode": true` in `.tellrc` for optimized performance
-
-Configure which providers and models to use in `.tellrc`:
-
-```json
-{
-  "speed_mode": true,
-  "providers": ["openrouter", "nvidia"],
-  "models": {
-    "openrouter": {
-      "query": ["qwen/qwen3-coder:free", "google/gemma-4-26b-a4b-it:free", "openrouter/owl-alpha"],
-      "system": ["qwen/qwen3-coder:free", "google/gemma-4-26b-a4b-it:free", "openrouter/owl-alpha"]
-    },
-    "nvidia": {
-      "query": ["meta/llama-3.1-8b-instruct", "mistralai/mistral-small-4-119b-2603", "deepseek-ai/deepseek-v4-pro"],
-      "system": ["meta/llama-3.1-8b-instruct", "mistralai/mistral-small-4-119b-2603", "deepseek-ai/deepseek-v4-pro"]
-    }
-  },
-  "ui": {
-    "border_style": "clean",
-    "theme": "eye-friendly",
-    "themes": {
-      "eye-friendly": { "border": 102, "text": 188, "prompt": 130, "accent": 107, "bold": 107 },
-      "warm":        { "border": 130, "text": 180, "prompt": 173, "accent": 179, "bold": 179 },
-      "cool":        { "border": 37,  "text": 153, "prompt": 39,  "accent": 33,  "bold": 39 },
-      "default":     { "border": 93,  "text": 97,  "prompt": 94,  "accent": 96,  "bold": 96 }
-    }
-  },
-  "performance": {
-    "enable_caching": true,
-    "cache_ttl": 7200,
-    "max_retries": 2,
-    "timeout": 5
-  }
-}
-```
+**tell** is a powerful, terminal-based AI coding and productivity agent built for corporate environments. It combines a ChatGPT‑style natural‑language interface with safe local command execution, document generation, and cross‑session memory — all inside your terminal.
 
 ---
 
 ## Features
 
-- **AI-powered** — natural language queries routed to OpenRouter or NVIDIA
-- **Multi-provider** — automatically falls back between providers and models
-- **Zero-delay failover** — no retry sleeps, instant model switching
-- **Speed mode** — optimized performance with reduced model lists
-- **System commands** — disk, memory, processes, ports, network, firewall, services, users
-- **Security** — dangerous commands blocked, path traversal protected
-- **File operations** — create, read, write files
-- **Command history** — track and repeat commands
-- **Response caching** — TTL-based eviction for repeated queries (sub-second cached responses)
-- **Animated UI** — bordered boxes with typewriter effect, 4 built-in themes (eye-friendly, warm, cool, default)
+| Feature | Description |
+|---------|-------------|
+| **General Q&A** | Ask any question and receive well-structured, bold‑formatted answers with terminal colour highlighting. |
+| **Coding tasks** | Use `do` to generate, write, and execute code automatically (supports any language). |
+| **Document generation** | Ask for a document or SOP and it will be auto‑saved as a Markdown file. |
+| **Conversation memory** | Chat history persists across sessions via `.tell_history.json`. |
+| **Response completeness** | Automatic continuation loop ensures no answer is cut off. |
+| **Local command detection** | Commands like `date`, `df`, `ps` are intercepted and executed safely. |
+| **Security** | Dangerous commands are blocked; file writes are restricted to allowed directories. |
+| **Syntax highlighting** | Code blocks, inline commands, and file paths are coloured for readability. |
+| **Cross‑platform colours** | Uses the standard 16‑colour ANSI palette — identical appearance on Linux, macOS, and Windows terminals. |
 
 ---
 
-## Built-in Commands
+## Installation
 
-```
-disk    memory    procs    ports    ip    network    sysinfo
-uptime  whoami    date     pwd      services  fw    updates
-users   logins    scan     suid     security  ls    dir    files
+### Prerequisites
+
+- **Python 3.10+**
+- **NVIDIA API key** (free tier available at https://build.nvidia.com/explore)
+
+### Quick start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yesk993-ops/terminal-AI-Agent-2.git
+cd terminal-AI-Agent-2
+
+# 2. (Optional) Create a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set your NVIDIA API key
+export NVIDIA_API_KEY="your-key-here"
+
+# 5. Run it
+python main.py --inline "what is python"
 ```
 
-Type `help` or `commands` for the full list.
+### Platform‑specific notes
+
+| Platform | Notes |
+|----------|-------|
+| **Linux** | Works out of the box. Unicode (box‑drawing) characters may need a modern terminal (GNOME Terminal, Konsole, iTerm2, Windows Terminal). |
+| **macOS** | Works out of the box. iTerm2 recommended. |
+| **Windows** | Use Windows Terminal or PowerShell 7+. The colour palette uses basic 16‑colour ANSI codes that render identically to Linux/macOS. |
 
 ---
 
-## Project Structure
+## Configuration
 
+Configuration is read from `.tellrc` (JSON format) in the current directory. Key options:
+
+```json
+{
+  "ui": {
+    "border_style": "minimal",
+    "theme": "universal"
+  },
+  "security": {
+    "allowed_write_dirs": ["/path/to/allowed"],
+    "max_file_size": 10485760,
+    "dangerous_commands": ["rm -rf", "mkfs", "dd if="]
+  },
+  "performance": {
+    "enable_caching": true,
+    "cache_ttl": 3600,
+    "timeout": 45
+  },
+  "models": {
+    "system": "nvidia/nemotron-4-340b-instruct"
+  },
+  "behavior": {
+    "enable_command_history": true,
+    "max_history_size": 100
+  }
+}
 ```
-tell/
-├── main.py              # Entry point
-├── agent.py             # Legacy wrapper
-├── core/                # Agent orchestration, query analysis
-├── api/                 # Multi-provider API client (OpenRouter, NVIDIA)
-├── commands/            # Local system commands
-├── security/            # Command + path validation
-├── ui/                  # Terminal rendering
-├── config/              # Configuration loader
-└── logger/              # Audit logging
-```
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `NVIDIA_API_KEY` | API key for the NVIDIA LLM backend (required). |
+| `TELL_BORDER` | Override border style (e.g. `rounded`, `classic`, `clean`). |
 
 ---
 
-## Requirements
+## Usage
 
-- Python 3.8+
-- At least one API key:
-  - [OpenRouter](https://openrouter.ai/keys) (free, recommended)
-  - [NVIDIA NIM](https://build.nvidia.com/explore) (free)
+### Inline mode (single query)
+
+```bash
+# General question
+python main.py --inline "how does docker work"
+
+# Coding task (auto‑write and execute)
+python main.py --inline "do write a python script that prints hello world"
+
+# Document creation (auto‑saves to Markdown)
+python main.py --inline "create a document about docker images"
+
+# System command
+python main.py --inline "show disk usage"
+```
+
+### Interactive mode
+
+```bash
+python main.py
+```
+
+You will see a prompt (`❯`). Type naturally:
+
+- Type any question to get an answer.
+- Prefix with `do ` to run a coding or system task.
+- Type `help` to see built‑in commands.
+- Type `border` to cycle the box style.
+- Type `reset` to clear conversation history.
+- Type `history` to see recent commands.
+
+---
+
+## Architecture
+
+```
+main.py                  – Entry point, argument parsing, UI routing
+├── core/
+│   ├── __init__.py      – TellAgent orchestrator (prompt, API, commands)
+│   ├── prompts.py       – System prompts (Q&A, coding, document)
+│   ├── analyzer.py      – Query complexity analysis, token limits
+│   ├── cache.py         – Response caching with TTL
+│   ├── command_history.py – Recent‑command tracking
+├── api/                 – NVIDIA API client (generate, stream)
+├── commands/            – Local command detection & execution
+├── ui/
+│   ├── __init__.py      – TerminalUI (bordered boxes, themes)
+│   ├── highlighter.py   – Syntax highlighting (cross‑platform ANSI)
+├── config/              – JSON/ENV config loader
+├── security/            – Path validation, dangerous‑command blocking
+└── logger/              – File‑based logging
+```
+
+### Prompt selection
+
+| Trigger | Prompt used |
+|---------|-------------|
+| `do <task>` | `CODING_PROMPT` (file‑write + execution directives) |
+| `create document …` | `DOCUMENT_PROMPT` (auto‑save to Markdown) |
+| Any other query | `QUERY_PROMPT` (ChatGPT‑style, markdown‑friendly) |
+
+---
+
+## Corporate readiness
+
+- **Answer completeness** – Automatic continuation loop if the model stops early.
+- **Full conversation memory** – Both user and assistant messages are persisted to `.tell_history.json`.
+- **Error handling** – All API calls wrapped in try/except; graceful degradation.
+- **Security** – File writes restricted to allowed directories; dangerous commands blocked; permissions set to `0o600`.
+- **Cross‑platform** – Uses the standard 16‑colour ANSI palette (codes 30–37, 90–97) that renders identically on Linux, macOS, and Windows.
+- **No markdown leakage** – Bold markers (`**`) are converted to ANSI bold so raw markdown never appears in terminal output.
+- **Extensible** – Modular architecture makes it easy to swap backends, add commands, or change themes.
+
+---
+
+## Example output
+
+```
+╭─────────────────────────────────────────────────────────────────╮
+│ **Docker Overview**                                              │
+│                                                                   │
+│ Docker is a containerization platform that allows developers to  │
+│ package, ship, and run applications in containers. Containers    │
+│ are lightweight and portable.                                    │
+│                                                                   │
+│ **Key Components**                                                │
+│                                                                   │
+│ 1. **Images**: Templates containing application code and deps.   │
+│ 2. **Containers**: Running instances of images.                  │
+│ 3. **Docker Daemon**: Background process that manages containers.│
+│ 4. **Docker Client**: CLI to interact with the daemon.           │
+╰─────────────────────────────────────────────────────────────────╯
+```
+
+(Colours appear as bold headings, cyan for inline commands, green for strings, etc.)
+
+---
+
+## Roadmap
+
+- [ ] Unit tests with pytest
+- [ ] CI pipeline (GitHub Actions)
+- [ ] Retrieval‑Augmented Generation (RAG) for local docs
+- [ ] Streaming responses for inline mode
+- [ ] Dockerised deployment
 
 ---
 

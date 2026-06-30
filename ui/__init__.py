@@ -17,11 +17,13 @@ class TerminalUI:
         "minimal": ("╭", "─", "╮", " ", "╰", "╯"),
         "clean":   (" ", " ", " ", " ", " ", " "),
     }
+    # Standard 16-color ANSI palette — works on Linux, macOS, and Windows terminals
     THEMES = {
-        "eye-friendly": {"border": 37, "text": 188, "prompt": 130, "accent": 107},
-        "warm":         {"border": 130, "text": 180, "prompt": 173, "accent": 179},
-        "cool":         {"border": 37, "text": 153, "prompt": 39, "accent": 33},
-        "default":      {"border": 93, "text": 97, "prompt": 94, "accent": 96},
+        "universal": {"border": 6, "text": 7, "prompt": 3, "accent": 14},
+        "eye-friendly": {"border": 6, "text": 7, "prompt": 3, "accent": 14},
+        "warm":         {"border": 1, "text": 7, "prompt": 3, "accent": 11},
+        "cool":         {"border": 4, "text": 7, "prompt": 6, "accent": 14},
+        "default":      {"border": 6, "text": 7, "prompt": 3, "accent": 14},
     }
 
     def __init__(self, border_style: str = "minimal", theme: str = "eye-friendly"):
