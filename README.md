@@ -60,24 +60,46 @@ tell "what are files"   # List files
 
 Tell supports both OpenRouter and NVIDIA simultaneously:
 
-1. **OpenRouter** (default) — 8 top free models tried in order:
+1. **OpenRouter** — top free models tried in order:
+   - `qwen/qwen3-coder:free` (1M context)
+   - `google/gemma-4-26b-a4b-it:free` (262K)
    - `openrouter/owl-alpha` (1M context)
-   - `google/gemma-4-31b-it:free` (262K)
-   - `qwen/qwen3-coder:free` (1M)
-   - `nvidia/nemotron-3-super-120b-a12b:free` (1M)
-   - and more
 2. **NVIDIA NIM** — 3 models as fallback
 3. **Zero-delay failover** — on any error, instantly tries the next model
 4. **Fast streaming** — raw tokens delivered without heavy post-processing
+5. **Speed mode** — enable `"speed_mode": true` in `.tellrc` for optimized performance
 
 Configure which providers and models to use in `.tellrc`:
 
 ```json
 {
+  "speed_mode": true,
   "providers": ["openrouter", "nvidia"],
   "models": {
-    "openrouter": { "query": [...], "system": [...] },
-    "nvidia": { "query": [...], "system": [...] }
+    "openrouter": {
+      "query": ["qwen/qwen3-coder:free", "google/gemma-4-26b-a4b-it:free", "openrouter/owl-alpha"],
+      "system": ["qwen/qwen3-coder:free", "google/gemma-4-26b-a4b-it:free", "openrouter/owl-alpha"]
+    },
+    "nvidia": {
+      "query": ["meta/llama-3.1-8b-instruct", "mistralai/mistral-small-4-119b-2603", "deepseek-ai/deepseek-v4-pro"],
+      "system": ["meta/llama-3.1-8b-instruct", "mistralai/mistral-small-4-119b-2603", "deepseek-ai/deepseek-v4-pro"]
+    }
+  },
+  "ui": {
+    "border_style": "clean",
+    "theme": "eye-friendly",
+    "themes": {
+      "eye-friendly": { "border": 102, "text": 188, "prompt": 130, "accent": 107, "bold": 107 },
+      "warm":        { "border": 130, "text": 180, "prompt": 173, "accent": 179, "bold": 179 },
+      "cool":        { "border": 37,  "text": 153, "prompt": 39,  "accent": 33,  "bold": 39 },
+      "default":     { "border": 93,  "text": 97,  "prompt": 94,  "accent": 96,  "bold": 96 }
+    }
+  },
+  "performance": {
+    "enable_caching": true,
+    "cache_ttl": 7200,
+    "max_retries": 2,
+    "timeout": 5
   }
 }
 ```
@@ -89,12 +111,13 @@ Configure which providers and models to use in `.tellrc`:
 - **AI-powered** — natural language queries routed to OpenRouter or NVIDIA
 - **Multi-provider** — automatically falls back between providers and models
 - **Zero-delay failover** — no retry sleeps, instant model switching
+- **Speed mode** — optimized performance with reduced model lists
 - **System commands** — disk, memory, processes, ports, network, firewall, services, users
 - **Security** — dangerous commands blocked, path traversal protected
-- **File operations** — create, read, write files; auto-install dependencies
+- **File operations** — create, read, write files
 - **Command history** — track and repeat commands
 - **Response caching** — TTL-based eviction for repeated queries (sub-second cached responses)
-- **Animated UI** — bordered boxes with typewriter effect, multiple themes
+- **Animated UI** — bordered boxes with typewriter effect, 4 built-in themes (eye-friendly, warm, cool, default)
 
 ---
 
