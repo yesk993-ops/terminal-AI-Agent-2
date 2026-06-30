@@ -21,9 +21,11 @@ class ResponseCache:
                 cache = json.load(f)
             if query in cache:
                 item = cache[query]
+                if not isinstance(item, dict) or "timestamp" not in item:
+                    return None
                 ttl = self.config.get("performance.cache_ttl", 3600)
                 if time.time() - item["timestamp"] < ttl:
-                    return item["response"]
+                    return item.get("response")
         except (KeyError, json.JSONDecodeError, OSError):
             pass
         return None
@@ -51,7 +53,7 @@ class ResponseCache:
                 cache = json.load(f)
             ttl = self.config.get("performance.cache_ttl", 3600)
             now = time.time()
-            expired = [k for k, v in cache.items() if now - v.get("timestamp", 0) > ttl]
+            expired = [k for k, v in cache.items() if isinstance(v, dict) and now - v.get("timestamp", 0) > ttl]
             for k in expired:
                 del cache[k]
             if expired:

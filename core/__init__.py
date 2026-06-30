@@ -21,13 +21,19 @@ from ui.highlighter import highlight_response
 from security import SecurityManager
 from logger import get_logger
 from . import analyzer
-from .prompts import CODING_PROMPT, DOCUMENT_PROMPT
+from .prompts import CODING_PROMPT, DOCUMENT_PROMPT, QUERY_PROMPT
 from .cache import ResponseCache
 
 IS_WINDOWS = platform.system() == "Windows"
 
 class TellAgent:
-    """Core agent orchestrator — prompt selection, API calls, command dispatch."""
+    """Core orchestrator for the Tell AI agent.
+
+    Handles configuration, prompt selection, API communication, command
+    execution, and response post‑processing. The implementation now includes
+    comprehensive docstrings, type hints, and small refactors to improve
+    readability, maintainability, and suitability for corporate environments.
+    """
 
     def __init__(self, config_path: str = ".tellrc"):
         self.log = get_logger("TellAgent")
@@ -78,6 +84,16 @@ class TellAgent:
 
         self.message_history: List[Dict[str, str]] = []
         self.history: Optional[CommandHistory] = None
+        # Path for persisting chat history across sessions
+        self._history_path = Path('.tell_history.json')
+        # Load existing history if present
+        if self._history_path.is_file():
+            try:
+                self.message_history = json.load(self._history_path.open())
+                self.log.info('Loaded persisted chat history')
+            except Exception as e:
+                self.log.warning(f'Failed to load chat history: {e}')
+                self.message_history = []
         self.cache = ResponseCache(self.config)
 
         if self.config.get("behavior.enable_command_history"):
@@ -89,27 +105,58 @@ class TellAgent:
         self.log.info("TellAgent initialized successfully")
 
     def add_message(self, role: str, content: str) -> None:
-        """Add a message to the conversation history."""
+        """Record a message in the internal chat history and persist it.
+
+        Args:
+            role: ``"user"`` or ``"assistant"`` indicating the speaker.
+            content: The raw text of the message.
+        """
         self.message_history.append({"role": role, "content": content})
+        # Persist the updated history to disk for cross‑session memory
+        try:
+            self._history_path.write_text(json.dumps(self.message_history, ensure_ascii=False, indent=2))
+        except Exception as e:
+            self.log.error(f"Failed to persist chat history: {e}")
 
     def get_messages(self) -> List[Dict[str, str]]:
-        """Get all conversation messages."""
+        """Return the full list of stored chat messages.
+
+        This includes both user and assistant entries in chronological order.
+        """
         return self.message_history
 
     def clear_history(self) -> None:
-        """Clear all conversation history."""
+        """Reset the internal chat history, delete persisted file, and clear command history buffer.
+
+        All stored messages are discarded, the ``.tell_history.json`` file is removed,
+        and the optional ``CommandHistory`` instance is cleared.
+        """
         self.message_history = []
+        # Delete persisted history file if it exists
+        try:
+            if self._history_path.is_file():
+                self._history_path.unlink()
+        except Exception as e:
+            self.log.error(f"Failed to delete history file: {e}")
         if self.history:
             self.history.clear()
 
     def execute_command(self, query: str) -> Tuple[str, Any]:
-        """Execute a command and log to history."""
+        """Run a user‑issued command through ``LocalCommands`` and record it.
+
+        The method forwards the ``query`` to ``LocalCommands.execute`` which
+        returns a tuple ``(action, value)``. ``action`` indicates the type of
+        operation (e.g., ``"local"``, ``"shell"``, ``"ai"``) and ``value``
+        contains the result string or a callable.
+
+        If command‑history tracking is enabled, the call is logged in the
+        ``CommandHistory`` buffer.
+        """
         action, value = self.commands.execute(query)
 
-        if action in ("local", "shell"):
-            result = value
-        else:
-            result = value
+        # ``action`` determines how ``value`` should be interpreted; for now we
+        # simply forward the result unchanged.
+        result = value
 
         if self.history and self.config.get("behavior.enable_command_history"):
             self.history.add(query, str(result))
@@ -117,14 +164,31 @@ class TellAgent:
         return action, value
 
     def _get_dynamic_system_prompt(self, query: str) -> dict:
+        """Generate a system prompt based on query complexity.
+
+        The original implementation selected one of the predefined ``SYSTEM_PROMPTS``
+        (simple/medium/complex) after analysing the query. Although the main
+        workflow now prefers ``QUERY_PROMPT``, this helper remains for backward
+        compatibility or specialised internal uses.
+        """
         result = analyzer.analyze(query)
         level = result["level"]
         content = analyzer.SYSTEM_PROMPTS[level]
-        self.log.info(f"Query complexity: {level} (score={result['score']}, factors={result['factors']})")
+        self.log.info(
+            f"Query complexity: {level} (score={result['score']}, factors={result['factors']})"
+        )
         return {"role": "system", "content": content}
 
     def process_query(self, query: str) -> str:
-        """Process a user query and return the AI response."""
+        """Handle a user query, choose the appropriate system prompt, and
+        return the final assistant response.
+
+        The method performs:
+        1️⃣ Document‑creation detection (auto‑saves as Markdown).
+        2️⃣ Prompt selection (now using ``QUERY_PROMPT`` for standard Q&A).
+        3️⃣ Caching based on query text.
+        4️⃣ Post‑processing for ``WRITE:`` / ``EXECUTE:`` directives.
+        """
         messages = self.get_messages()
         result_analysis = analyzer.analyze(query)
         level = result_analysis["level"]
@@ -143,7 +207,14 @@ class TellAgent:
         if is_doc_request:
             messages = [m for m in messages if m.get("role") != "system"]
             messages.insert(0, {"role": "system", "content": DOCUMENT_PROMPT})
-            raw_response = self.api.generate_response(messages)
+            try:
+                raw_response = self.api.generate_response(messages)
+            except Exception as e:
+                self.log.error(f"Doc generation failed: {e}")
+                raw_response = f"Failed to generate document: {e}"
+            # Persist conversation
+            self.add_message("user", query)
+            self.add_message("assistant", raw_response)
             # Check if AI used WRITE: directives
             if re.search(r'^WRITE:', raw_response, re.MULTILINE):
                 results = self._run_commands(raw_response)
@@ -166,9 +237,10 @@ class TellAgent:
         if level == "complex":
             self.log.info("Using complex prompt for query (%s pts): %s", result_analysis['score'], result_analysis['factors'])
 
-        system_prompt = self._get_dynamic_system_prompt(query)
-
-        # Remove old system prompt, insert fresh one based on this query
+        # Use the richer QUERY_PROMPT for general Q&A instead of the simple dynamic prompt
+        from .prompts import QUERY_PROMPT
+        system_prompt = {"role": "system", "content": QUERY_PROMPT}
+        # Remove any existing system prompt and insert the new one
         messages = [m for m in messages if m.get("role") != "system"]
         messages.insert(0, system_prompt)
 
@@ -177,43 +249,57 @@ class TellAgent:
             if cached_response:
                 raw_response = cached_response
             else:
+                try:
+                    max_tokens = analyzer.get_max_tokens(level)
+                    raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
+                    self.cache.set(query, raw_response)
+                except Exception as e:
+                    self.log.error(f"API call failed: {e}")
+                    raw_response = f"I encountered an error while processing your request. Please try again later.\n\nDetails: {e}"
+        else:
+            try:
                 max_tokens = analyzer.get_max_tokens(level)
                 raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
-                self.cache.set(query, raw_response)
-        else:
-            max_tokens = analyzer.get_max_tokens(level)
-            raw_response = self.api.generate_response(messages, max_tokens=max_tokens)
+            except Exception as e:
+                self.log.error(f"API call failed: {e}")
+                raw_response = f"I encountered an error while processing your request. Please try again later.\n\nDetails: {e}"
+
+        # --- Continuation loop for incomplete responses ---
+        max_continue = 2
+        for _ in range(max_continue):
+            lines = [l for l in raw_response.split('\n') if l.strip()]
+            if not lines:
+                break
+            last_line = lines[-1].rstrip()
+            # End-of-sentence punctuation → consider complete
+            if last_line and last_line[-1] in ('.', '!', '?', ')', '"', "'", '`'):
+                break
+            self.log.info("Response may be incomplete (ends %r), fetching continuation", last_line[-60:])
+            messages.append({"role": "assistant", "content": raw_response})
+            messages.append({"role": "user", "content": "Continue exactly from where the previous assistant message left off. Do NOT repeat anything, just continue the explanation."})
+            try:
+                continuation = self.api.generate_response(messages, max_tokens=4096)
+            except Exception as e:
+                self.log.error(f"Continuation failed: {e}")
+                break
+            if not continuation or len(continuation) < 10:
+                break
+            raw_response += "\n" + continuation
 
         # Check for WRITE: directives in any response and execute them
         write_results = self._run_commands(raw_response)
         if write_results:
+            self.add_message("user", query)
+            self.add_message("assistant", raw_response)
             return write_results
 
-        def _auto_bold(text):
-            lines = text.split('\n')
-            result = []
-            for line in lines:
-                stripped = line.strip()
-                if (len(stripped) < 60 and len(stripped) > 3
-                    and '**' not in stripped and stripped.count(' ') >= 1
-                    and not stripped.startswith('-') and '.' not in stripped):
-                    if stripped[0].isupper():
-                        line = line.replace(stripped, f'**{stripped}**')
-                elif re.match(r'^\d+\.\s+[A-Z][^:]+:\s', stripped) and '**' not in stripped:
-                    match = re.match(r'^(\d+\.\s+[^:]+:)(.*)', stripped)
-                    if match:
-                        keyword_part = match.group(1)
-                        rest = match.group(2)
-                        line = line.replace(stripped, f'**{keyword_part}**{rest}')
-                elif re.match(r'^[A-Z][a-zA-Z\s]+:\s', stripped) and '**' not in stripped and len(stripped) < 80:
-                    colon_idx = stripped.index(':')
-                    keyword = stripped[:colon_idx+1]
-                    rest = stripped[colon_idx+1:]
-                    line = line.replace(stripped, f'**{keyword}**{rest}')
-                result.append(line)
-            return '\n'.join(result)
-        response = _auto_bold(raw_response)
-        response = highlight_response(response)
+        # Convert markdown bold (**text**) to ANSI bold and keep colors for code/commands
+        formatted = re.sub(r'\*\*(.*?)\*\*', r'\033[1m\1\033[0m', raw_response)
+        response = highlight_response(formatted)
+
+        # Persist assistant response so conversation memory is complete
+        self.add_message("user", query)
+        self.add_message("assistant", raw_response)
 
         return response
 

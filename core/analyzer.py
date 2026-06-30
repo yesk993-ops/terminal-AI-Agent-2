@@ -162,7 +162,9 @@ def analyze(query: str) -> dict:
 
 
 def get_max_tokens(level: str) -> int:
-    return {"simple": 512, "medium": 2048, "complex": 4096}.get(level, 2048)
+    # Increase token limits for richer answers; give ample room for detailed explanations.
+    # Allow a very large token budget for complex queries so the answer isn’t cut off
+    return {"simple": 512, "medium": 2048, "complex": 32768}.get(level, 2048)
 
 
 SYSTEM_PROMPTS = {

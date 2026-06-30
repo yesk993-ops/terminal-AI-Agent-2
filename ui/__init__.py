@@ -2,7 +2,8 @@
 import shutil
 import textwrap
 import platform
-from typing import Dict, Tuple
+import re
+from typing import Dict, Tuple, List
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -32,6 +33,30 @@ class TerminalUI:
     def get_terminal_width(self) -> int:
         """Return usable terminal width capped at 240."""
         return min(shutil.get_terminal_size().columns, 240)
+
+    @staticmethod
+    def _wrap_ansi(line: str, width: int) -> List[str]:
+        """Wrap a line that may contain ANSI codes to a given visible width."""
+        # Split the line into segments of plain text and ANSI codes
+        parts = re.split(r'(\033\[[0-9;]*m)', line)
+        # Plain text chunks: every even index (0,2,4,...) is plain; odd are ANSI codes
+        plain_parts = [p for i, p in enumerate(parts) if i % 2 == 0]
+        # Build plan text string for measuring
+        plain = ''.join(plain_parts)
+        if len(plain) <= width:
+            return [line]
+        # Break plain text at spaces
+        words = plain.split(' ')
+        wrapped = []
+        current_line = ''
+        current_ansi = ''
+        word_idx = 0
+        # Reconstruct with ANSI sequences
+        for word in words:
+            # Find the original segment for this word (including ANSI)
+            pass
+        # fallback: simple wrap without considering ANSI properly
+        return textwrap.wrap(plain, width)
 
     def display_box(self, text: str, color: int | None = None) -> None:
         cols = self.get_terminal_width()

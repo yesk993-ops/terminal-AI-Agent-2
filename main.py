@@ -195,12 +195,12 @@ def main():
             # Try local command detection first
             local_fn = agent.commands.detect_local(sys.argv[2])
             if local_fn:
-                animated_ui.animate_box(local_fn())
+                agent.ui.display_box(local_fn())
                 print()
             else:
                 agent.add_message("user", sys.argv[2])
                 response = agent.process_query(sys.argv[2])
-                animated_ui.animate_box(response)
+                agent.ui.display_box(response)
                 print()
 
         return

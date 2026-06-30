@@ -133,7 +133,9 @@ def highlight_code_block(lang: str, code: str) -> str:
 
 
 def highlight_response(text: str) -> str:
-    """Apply syntax highlighting to code blocks, inline commands, and bare command lines."""
+    """Apply syntax highlighting to code blocks, inline commands, and bare command lines.
+    This restores terminal colours and allows bold formatting via ANSI codes.
+    """
     def _replace_block(m):
         lang = m.group(1).strip() or ""
         code = m.group(2)

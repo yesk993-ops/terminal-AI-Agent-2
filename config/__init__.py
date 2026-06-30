@@ -87,7 +87,7 @@ class TellConfig:
             "behavior": {
                 "enable_command_history": True,
                 "max_history_size": 100,
-                "auto_install_deps": True
+                "auto_install_deps": False
             }
         }
 
