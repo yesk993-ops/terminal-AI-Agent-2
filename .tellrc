@@ -1,31 +1,33 @@
 {
-  "providers": ["openrouter", "nvidia"],
+  "speed_mode": true,
+  "providers": [
+    "openrouter",
+    "nvidia"
+  ],
   "models": {
     "openrouter": {
       "query": [
-        "openrouter/owl-alpha",
-        "google/gemma-4-31b-it:free",
-        "google/gemma-4-26b-a4b-it:free",
         "qwen/qwen3-coder:free",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "openai/gpt-oss-120b:free",
-        "qwen/qwen3-next-80b-a3b-instruct:free"
+        "google/gemma-4-26b-a4b-it:free",
+        "openrouter/owl-alpha"
       ],
       "system": [
-        "openrouter/owl-alpha",
-        "google/gemma-4-31b-it:free",
-        "google/gemma-4-26b-a4b-it:free",
         "qwen/qwen3-coder:free",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "openai/gpt-oss-120b:free",
-        "qwen/qwen3-next-80b-a3b-instruct:free"
+        "google/gemma-4-26b-a4b-it:free",
+        "openrouter/owl-alpha"
       ]
     },
     "nvidia": {
-      "query": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"],
-      "system": ["meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-pro", "mistralai/mistral-small-4-119b-2603"]
+      "query": [
+        "meta/llama-3.1-8b-instruct",
+        "mistralai/mistral-small-4-119b-2603",
+        "deepseek-ai/deepseek-v4-pro"
+      ],
+      "system": [
+        "meta/llama-3.1-8b-instruct",
+        "mistralai/mistral-small-4-119b-2603",
+        "deepseek-ai/deepseek-v4-pro"
+      ]
     }
   },
   "security": {
@@ -70,17 +72,48 @@
     ]
   },
   "ui": {
-    "border_style": "minimal",
-    "theme": "default"
+    "border_style": "clean",
+    "theme": "eye-friendly",
+    "themes": {
+      "eye-friendly": {
+        "border": 102,
+        "text": 188,
+        "prompt": 130,
+        "accent": 107,
+        "bold": 107
+      },
+      "warm": {
+        "border": 130,
+        "text": 180,
+        "prompt": 173,
+        "accent": 179,
+        "bold": 179
+      },
+      "cool": {
+        "border": 37,
+        "text": 153,
+        "prompt": 39,
+        "accent": 33,
+        "bold": 39
+      },
+      "default": {
+        "border": 93,
+        "text": 97,
+        "prompt": 94,
+        "accent": 96,
+        "bold": 96
+      }
+    }
   },
   "performance": {
     "enable_caching": true,
-    "cache_ttl": 3600,
-    "timeout": 8
+    "cache_ttl": 7200,
+    "max_retries": 2,
+    "timeout": 5
   },
   "behavior": {
     "enable_command_history": true,
     "max_history_size": 100,
-    "auto_install_deps": true
+    "auto_install_deps": false
   }
 }

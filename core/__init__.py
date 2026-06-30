@@ -57,8 +57,11 @@ class TellAgent:
             c = agent_configs[0]
             self.api = c["class"](api_key=c["api_key"], models=c["models"],
                                    timeout=self.config.get("performance.timeout", 45))
+            self.log.info(f"Using single provider: {c['class'].__name__} with model: {c['models'][0] if c['models'] else 'unknown'}")
         else:
             self.api = MultiProviderAgent(agent_configs, timeout=self.config.get("performance.timeout", 45))
+            provider_names = [c["class"].__name__ for c in agent_configs]
+            self.log.info(f"Using multiple providers: {', '.join(provider_names)}; will try in order")
 
         self.security = SecurityManager(
             allowed_dirs=self.config.get("security.allowed_write_dirs"),

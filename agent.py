@@ -8,6 +8,7 @@ import textwrap
 import time
 
 from config import TellConfig
+from core.utils import _auto_bold
 
 def _check_api_key():
     from api import PROVIDER_REGISTRY
@@ -80,18 +81,7 @@ def animated_box(text, color=96, delay=0.02):
     print(f"\033[1;{color}m{bl}{h*(cols-2)}{br}\033[0m")
 
 
-def _auto_bold(text):
-    lines = text.split('\n')
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if (stripped.endswith(':') and len(stripped) < 80
-            and not stripped.startswith('-') and not stripped.startswith(tuple(str(i) for i in range(10)))
-            and '**' not in stripped and stripped.count(' ') >= 1):
-            if stripped[0].isupper() and '.' not in stripped:
-                line = line.replace(stripped, f'**{stripped}**')
-        result.append(line)
-    return '\n'.join(result)
+
 
 
 def inline_mode(query):
@@ -110,24 +100,11 @@ def inline_mode(query):
             print(f"\n{box(value, 92)}\n")
             return
 
-        coding_prompt = [{"role": "system", "content": CODING_PROMPT}]
-        messages = coding_prompt + [{"role": "user", "content": task}]
-        print()
-        response = agent.api.generate_response(messages)
-
-        results = agent._run_commands(response)
-        if results:
-            print(box(results, 97))
-            print()
-        else:
-            print(box(response, 97))
-            print()
-    else:
-        messages = [
-            {"role": "system", "content": QUERY_PROMPT},
-            {"role": "user", "content": query}
-        ]
-        response = agent.api.generate_response(messages, max_tokens=16384)
+        # For AI command execution, set up the agent's history with coding prompt and user message
+        agent.clear_history()
+        agent.add_message("system", CODING_PROMPT)
+        agent.add_message("user", task)
+        response = agent.process_query(task)
         response = _auto_bold(response)
         if response:
             print()
@@ -136,6 +113,19 @@ def inline_mode(query):
         else:
             print(box("No response generated", 91))
 
+    else:
+        # For non-do queries, set up the agent's history with query prompt and user message
+        agent.clear_history()
+        agent.add_message("system", QUERY_PROMPT)
+        agent.add_message("user", query)
+        response = agent.process_query(query)
+        response = _auto_bold(response)
+        if response:
+            print()
+            animated_box(response, 97, delay=0.0003)
+            print()
+        else:
+            print(box("No response generated", 91))
 
 def main():
     _check_api_key()
