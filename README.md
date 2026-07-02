@@ -27,7 +27,7 @@
 - **Python 3.10+**
 - **NVIDIA API key** (free tier available at https://build.nvidia.com/explore)
 
-### Quick start
+#### Quick start (manual)
 
 ```bash
 # 1. Clone the repository
@@ -47,6 +47,24 @@ export NVIDIA_API_KEY="your-key-here"
 # 5. Run it
 python main.py --inline "what is python"
 ```
+
+#### Universal one‑line installer (Linux/macOS/Windows PowerShell)
+
+You can install the agent with a single command that detects your OS, installs dependencies, creates a virtual environment, and prompts for your API keys.
+
+**Linux/macOS (bash, zsh, etc.):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yesk993-ops/terminal-AI-Agent-2/main/install_agent.sh | bash
+```
+
+**Windows PowerShell:**
+
+```powershell
+iwr -UseBasicParsing https://raw.githubusercontent.com/yesk993-ops/terminal-AI-Agent-2/main/install_agent.sh | iex
+```
+
+After the script finishes, follow the printed instructions to activate the virtual environment and run the agent.
 
 ### Platform‑specific notes
 
