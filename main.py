@@ -142,10 +142,10 @@ def main():
         agent = TellAgent()
         animated_ui.current_style = agent.config.get("ui.border_style", "minimal")
 
-        query = sys.argv[2].lower()
+        query = ' '.join(sys.argv[2:]).lower()
 
         if query.startswith("do "):
-            task = sys.argv[2][3:].strip()
+            task = query[3:].strip()
             action, value = agent.commands.execute(task)
 
             if action != "ai":
@@ -193,13 +193,13 @@ def main():
 
         else:
             # Try local command detection first
-            local_fn = agent.commands.detect_local(sys.argv[2])
+            local_fn = agent.commands.detect_local(query)
             if local_fn:
                 agent.ui.display_box(local_fn())
                 print()
             else:
-                agent.add_message("user", sys.argv[2])
-                response = agent.process_query(sys.argv[2])
+                agent.add_message("user", query)
+                response = agent.process_query(query)
                 agent.ui.display_box(response)
                 print()
 
