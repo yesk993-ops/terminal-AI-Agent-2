@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Global installer for terminal-AI-Agent-2
 set -euo pipefail
 
 REPO_URL="https://github.com/yesk993-ops/terminal-AI-Agent-2.git"
 
-# Determine install location: if running as root, use /opt, else user local
 if [[ "$EUID" -eq 0 ]]; then
     INSTALL_DIR="/opt/terminal-ai-agent"
     BIN_DIR="/usr/local/bin"
@@ -28,50 +26,51 @@ fi
 
 cd "$INSTALL_DIR"
 
-# Verify Python 3
 if ! command -v python3 >/dev/null 2>&1; then
-    echo "Error: python3 not found. Please install python3."
+    echo "Error: python3 not found."
     exit 1
 fi
 
-# Create virtual environment if not exists
 if [[ ! -d ".venv" ]]; then
     echo "Creating Python virtual environment ..."
     python3 -m venv .venv
 fi
 
-# Activate venv
 source .venv/bin/activate
 
-# Upgrade pip and install build dependencies
-echo "Upgrading pip ..."
 pip install --upgrade pip
-pip install --upgrade setuptools wheel
 
-# Install dependencies
-if [[ -f "pyproject.toml" ]]; then
-    echo "Installing package from pyproject.toml ..."
-    pip install .
-elif [[ -f "requirements.txt" ]]; then
-    echo "Installing from requirements.txt ..."
+if [[ -f "requirements.txt" ]]; then
+    echo "Installing dependencies from requirements.txt ..."
     pip install -r requirements.txt
 else
-    echo "Error: No pyproject.toml or requirements.txt found."
+    echo "Error: requirements.txt not found."
     exit 1
 fi
 
-# Make entry point available
 chmod +x tell
-if [[ -L "$BIN_LINK" ]]; then
-    rm -f "$BIN_LINK"
-fi
 ln -sf "$INSTALL_DIR/tell" "$BIN_LINK"
+
+# Prompt for API key if not set and no .env exists
+if [[ ! -f "$INSTALL_DIR/.env" ]] && [[ -z "${NVIDIA_API_KEY:-}" ]] && [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+    echo ""
+    echo "No API key detected."
+    echo "You can get a free key at https://build.nvidia.com/explore"
+    echo ""
+    read -r -p "Enter your NVIDIA API key (or press Enter to skip): " API_KEY </dev/tty
+    if [[ -n "$API_KEY" ]]; then
+        echo "NVIDIA_API_KEY=$API_KEY" > "$INSTALL_DIR/.env"
+        chmod 600 "$INSTALL_DIR/.env"
+        echo "Saved to $INSTALL_DIR/.env"
+    fi
+fi
 
 echo ""
 echo "Installation complete!"
-echo "You can now run the agent with:"
-echo "  tell"
-if [[ "$EUID" -ne 0 ]]; then
-    echo "Make sure $BIN_DIR is in your PATH is set (usually it is for $HOME/.local/bin)."
-fi
 echo ""
+echo "Run the agent:"
+echo "  tell \"what is python?\""
+echo ""
+if [[ "$EUID" -ne 0 ]]; then
+    echo "Make sure $BIN_DIR is in your PATH."
+fi
