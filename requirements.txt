@@ -1,1 +1,2 @@
-No dependencies required for this script
+requests>=2.25
+psutil>=5.8
