@@ -51,13 +51,13 @@ fi
 chmod +x tell
 ln -sf "$INSTALL_DIR/tell" "$BIN_LINK"
 
-# Prompt for API key if not set and no .env exists
-if [[ ! -f "$INSTALL_DIR/.env" ]] && [[ -z "${NVIDIA_API_KEY:-}" ]] && [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+# Prompt for API key only if running interactively and no key/.env exists
+if [[ -t 0 ]] && [[ ! -f "$INSTALL_DIR/.env" ]] && [[ -z "${NVIDIA_API_KEY:-}" ]] && [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
     echo ""
     echo "No API key detected."
     echo "You can get a free key at https://build.nvidia.com/explore"
     echo ""
-    read -r -p "Enter your NVIDIA API key (or press Enter to skip): " API_KEY </dev/tty
+    read -r -p "Enter your NVIDIA API key (or press Enter to skip): " API_KEY
     if [[ -n "$API_KEY" ]]; then
         echo "NVIDIA_API_KEY=$API_KEY" > "$INSTALL_DIR/.env"
         chmod 600 "$INSTALL_DIR/.env"
@@ -68,8 +68,12 @@ fi
 echo ""
 echo "Installation complete!"
 echo ""
-echo "Run the agent:"
+echo "Set your API key and run:"
+echo "  export NVIDIA_API_KEY=\"nvapi-...\""
 echo "  tell \"what is python?\""
+echo ""
+echo "Or create $INSTALL_DIR/.env with:"
+echo "  NVIDIA_API_KEY=your-key-here"
 echo ""
 if [[ "$EUID" -ne 0 ]]; then
     echo "Make sure $BIN_DIR is in your PATH."
