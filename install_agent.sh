@@ -79,9 +79,9 @@ fi
 
 # ---------- API key configuration ----------
 info "Please provide your API keys (leave blank to skip)."
-read -rp "NVIDIA API key: " NVIDIA_KEY
-read -rp "Azure OpenAI endpoint (optional): " AZURE_ENDPOINT
-read -rp "Azure OpenAI key (optional): " AZURE_KEY
+read -rp "NVIDIA API key: " NVIDIA_KEY < /dev/tty
+read -rp "Azure OpenAI endpoint (optional): " AZURE_ENDPOINT < /dev/tty
+read -rp "Azure OpenAI key (optional): " AZURE_KEY < /dev/tty
 
 CONFIG_FILE="$INSTALL_DIR/config.yaml"
 mkdir -p "$(dirname "$CONFIG_FILE")"
