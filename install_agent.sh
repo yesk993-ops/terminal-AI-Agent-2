@@ -33,6 +33,9 @@ source .venv/bin/activate
 # Install/upgrade pip
 pip install --upgrade pip
 
+# Ensure build dependencies are available
+pip install --upgrade setuptools wheel
+
 # Install dependencies from pyproject.toml (preferred) or requirements.txt
 if [[ -f "pyproject.toml" ]]; then
     pip install .
